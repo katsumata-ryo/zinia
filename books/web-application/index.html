@@ -1,0 +1,624 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Webアプリケーションを支えるもの</title>
+<!--
+  ==========================================================================
+  後続執筆者への申し送り（この本の骨組み規約）
+  --------------------------------------------------------------------------
+  ● 章の枠: <section class="chapter" id="chN"> … </section>（N=1〜32で連番）
+      章タイトルは <h2>第N章　タイトル</h2>
+  ● 部の扉: <section class="part-cover" id="partK">（K=0〜6）
+  ● 章冒頭の「この章で埋まる穴」: <div class="chap-hole">…</div>
+  ● 見出し階層: h2=章タイトル / h3=節 / h4=小見出し
+  ● コードブロック: <pre><code class="lang-ruby">…</code></pre>
+      使えるlang: lang-ruby / lang-sql / lang-js（インラインJSで自動ハイライト）
+      HTMLとして書くので < > & は &lt; &gt; &amp; にエスケープすること
+  ● MongoDB対比コラム: <aside class="mongo-note"><span class="tag">MongoDB脳の翻訳</span>…</aside>
+  ● 一般の補足コラム:   <aside class="eng-note"><span class="tag">補足</span>…</aside>
+  ● 理解度チェック（章末・3問）:
+      <div class="check-wrap"><h3>理解度チェック</h3>
+        <details class="check"><summary>Q1. …</summary><p>…</p></details> ×3
+      </div>
+  ● 図の枠が必要なら: <div class="figure">…</div>（枠線つき）
+  ● 章間参照は #chN へのアンカーリンクで（例: <a href="#ch16">第16章</a>）
+  ● localStorage・外部CDNは使わない。CSS/JSはすべてインライン。
+  ==========================================================================
+-->
+<style>
+  :root{
+    --bg:#ffffff; --fg:#1c2126; --muted:#5c6773; --line:#e2e6ea;
+    --sidebar-bg:#f6f8fa; --accent:#1f6feb; --accent-soft:#e7f0ff;
+    --mongo-bg:#f3eefc; --mongo-border:#8b5cf6; --mongo-fg:#3b2764;
+    --eng-bg:#eef6ee; --eng-border:#3f9142; --eng-fg:#1f3a20;
+    --check-bg:#f2f4f8; --code-bg:#f5f7f9; --code-border:#e2e6ea;
+    --hole-bg:#f2f4f8;
+    --t-kw:#b5177f; --t-str:#0a7d33; --t-cmt:#7a8896; --t-num:#0a5fc2;
+    --maxw:42em; --lh:1.8;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#0f1419; --fg:#d6dde3; --muted:#8b98a5; --line:#2a323b;
+      --sidebar-bg:#141a21; --accent:#5b9dff; --accent-soft:#16273f;
+      --mongo-bg:#1e1830; --mongo-border:#9b7cf0; --mongo-fg:#d8caf5;
+      --eng-bg:#132218; --eng-border:#4a9a4d; --eng-fg:#bfe3c2;
+      --check-bg:#161c23; --code-bg:#161c22; --code-border:#2a323b;
+      --hole-bg:#161c23;
+      --t-kw:#f072c0; --t-str:#68c982; --t-cmt:#7a8896; --t-num:#79b8ff;
+    }
+  }
+  :root[data-theme="light"]{
+    --bg:#ffffff; --fg:#1c2126; --muted:#5c6773; --line:#e2e6ea;
+    --sidebar-bg:#f6f8fa; --accent:#1f6feb; --accent-soft:#e7f0ff;
+    --mongo-bg:#f3eefc; --mongo-border:#8b5cf6; --mongo-fg:#3b2764;
+    --eng-bg:#eef6ee; --eng-border:#3f9142; --eng-fg:#1f3a20;
+    --check-bg:#f2f4f8; --code-bg:#f5f7f9; --code-border:#e2e6ea;
+    --hole-bg:#f2f4f8;
+    --t-kw:#b5177f; --t-str:#0a7d33; --t-cmt:#7a8896; --t-num:#0a5fc2;
+  }
+  :root[data-theme="dark"]{
+    --bg:#0f1419; --fg:#d6dde3; --muted:#8b98a5; --line:#2a323b;
+    --sidebar-bg:#141a21; --accent:#5b9dff; --accent-soft:#16273f;
+    --mongo-bg:#1e1830; --mongo-border:#9b7cf0; --mongo-fg:#d8caf5;
+    --eng-bg:#132218; --eng-border:#4a9a4d; --eng-fg:#bfe3c2;
+    --check-bg:#161c23; --code-bg:#161c22; --code-border:#2a323b;
+    --hole-bg:#161c23;
+    --t-kw:#f072c0; --t-str:#68c982; --t-cmt:#7a8896; --t-num:#79b8ff;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0; background:var(--bg); color:var(--fg);
+    font-family:system-ui,-apple-system,"Segoe UI","Hiragino Sans","Noto Sans JP",Meiryo,sans-serif;
+    line-height:var(--lh); font-size:17px; -webkit-text-size-adjust:100%;
+  }
+  a{color:var(--accent)}
+
+  /* ---- layout ---- */
+  .layout{display:flex; min-height:100vh}
+  .sidebar{
+    width:300px; flex:0 0 300px; background:var(--sidebar-bg);
+    border-right:1px solid var(--line); position:sticky; top:0; height:100vh;
+    overflow-y:auto; padding:1rem 0.75rem 3rem;
+  }
+  .sidebar h1{font-size:1rem; margin:0.25rem 0.5rem 0.5rem; line-height:1.4}
+  .sidebar .sub{color:var(--muted); font-size:0.78rem; margin:0 0.5rem 0.9rem}
+  .toc{list-style:none; margin:0; padding:0; font-size:0.85rem}
+  .toc .part{font-weight:700; color:var(--muted); margin:0.9rem 0.5rem 0.3rem; font-size:0.76rem; letter-spacing:.02em}
+  .toc a{display:block; padding:0.26rem 0.5rem; border-radius:6px; text-decoration:none; color:var(--fg)}
+  .toc a:hover{background:var(--accent-soft)}
+  .toc a.active{background:var(--accent-soft); color:var(--accent); font-weight:600}
+
+  .content{flex:1 1 auto; min-width:0; padding:2rem 1.5rem 6rem; display:flex; justify-content:center}
+  .content > main{width:100%; max-width:var(--maxw)}
+
+  section.chapter{scroll-margin-top:1rem; padding-top:2.5rem; margin-top:1rem; border-top:1px solid var(--line)}
+  section.chapter:first-of-type{border-top:0}
+  section.part-cover{scroll-margin-top:1rem; padding-top:3rem}
+  .part-cover h2{font-size:1.6rem; border:0; color:var(--accent)}
+  .part-cover .part-lead{color:var(--muted); font-size:0.95rem}
+  h2{font-size:1.5rem; line-height:1.4; margin:0 0 0.6rem}
+  h3{font-size:1.15rem; margin:2rem 0 0.5rem}
+  h4{font-size:1rem; margin:1.4rem 0 0.4rem}
+  .placeholder{color:var(--muted); font-style:italic}
+
+  /* ---- この章で埋まる穴 ---- */
+  .chap-hole{
+    background:var(--hole-bg); border-left:3px solid var(--accent);
+    padding:0.7rem 1rem; border-radius:0 6px 6px 0; margin:0 0 1.2rem; font-size:0.93rem;
+  }
+  .chap-hole .label{font-weight:700; display:block; margin-bottom:0.25rem; font-size:0.82rem; color:var(--accent); letter-spacing:.02em}
+
+  /* ---- MongoDB対比コラム ---- */
+  aside.mongo-note{
+    background:var(--mongo-bg); border:1px solid var(--mongo-border);
+    border-left-width:5px; color:var(--mongo-fg);
+    padding:0.8rem 1rem; border-radius:6px; margin:1.2rem 0; font-size:0.95rem;
+  }
+  aside.mongo-note .tag{
+    font-weight:700; font-size:0.78rem; display:block; margin-bottom:0.35rem; letter-spacing:.03em;
+  }
+  aside.mongo-note .tag::before{content:"⇄ "; }
+
+  /* ---- 一般の補足コラム ---- */
+  aside.eng-note{
+    background:var(--eng-bg); border:1px solid var(--eng-border);
+    border-left-width:5px; color:var(--eng-fg);
+    padding:0.8rem 1rem; border-radius:6px; margin:1.2rem 0; font-size:0.95rem;
+  }
+  aside.eng-note .tag{
+    font-weight:700; font-size:0.78rem; display:block; margin-bottom:0.35rem; letter-spacing:.03em;
+  }
+  aside.eng-note .tag::before{content:"◆ "; }
+
+  /* ---- 理解度チェック ---- */
+  details.check{
+    background:var(--check-bg); border:1px solid var(--line); border-radius:6px;
+    padding:0.6rem 0.9rem; margin:0.6rem 0;
+  }
+  details.check summary{cursor:pointer; font-weight:600}
+  details.check[open]{padding-bottom:0.9rem}
+  .check-wrap{margin:1.8rem 0 0.5rem}
+  .check-wrap > h3{margin-top:0}
+
+  /* ---- code ---- */
+  code{background:var(--code-bg); padding:0.1em 0.35em; border-radius:4px; font-size:0.9em;
+    font-family:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;}
+  pre{background:var(--code-bg); border:1px solid var(--code-border); border-radius:8px; padding:0.8rem 1rem;
+    overflow-x:auto; font-size:0.82rem; line-height:1.55; margin:1rem 0;
+    font-family:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;}
+  pre code{background:transparent; padding:0; font-size:1em}
+  .tok-kw{color:var(--t-kw)}
+  .tok-str{color:var(--t-str)}
+  .tok-cmt{color:var(--t-cmt); font-style:italic}
+  .tok-num{color:var(--t-num)}
+
+  /* ---- tables ---- */
+  table{border-collapse:collapse; width:100%; font-size:0.9rem; margin:1rem 0}
+  th,td{border:1px solid var(--line); padding:0.4rem 0.6rem; text-align:left; vertical-align:top}
+  .scroll-x{overflow-x:auto}
+
+  /* ---- figure ---- */
+  .figure{
+    border:1px dashed var(--line); border-radius:10px; padding:1rem;
+    background:var(--check-bg); margin:1.2rem 0; overflow-x:auto;
+  }
+  .figure figcaption, .figure .cap{text-align:center; color:var(--muted); font-size:0.82rem; margin-top:0.6rem}
+
+  /* ---- persona cards ---- */
+  .persona-grid{display:grid; gap:1rem; grid-template-columns:1fr}
+  .persona-card{border:1px solid var(--line); border-radius:10px; padding:1rem 1.1rem; background:var(--check-bg)}
+  .persona-card h3{margin:0 0 0.4rem}
+  .persona-card table{margin:0.4rem 0 0}
+  .persona-card td:first-child{width:32%; color:var(--muted)}
+
+  /* ---- topbar (mobile) ---- */
+  .topbar{
+    display:none; position:sticky; top:0; z-index:20; background:var(--sidebar-bg);
+    border-bottom:1px solid var(--line); padding:0.5rem 0.75rem; align-items:center; gap:0.5rem;
+  }
+  .topbar .title{font-weight:700; font-size:0.95rem; flex:1 1 auto}
+  .iconbtn{
+    background:transparent; border:1px solid var(--line); color:var(--fg);
+    border-radius:8px; padding:0.4rem 0.6rem; cursor:pointer; font-size:0.95rem; line-height:1;
+  }
+  .iconbtn:hover{background:var(--accent-soft)}
+  .theme-toggle{margin:0.25rem 0.5rem 0.5rem; width:calc(100% - 1rem)}
+
+  .overlay{display:none; position:fixed; inset:0; background:rgba(0,0,0,.4); z-index:29}
+
+  @media (max-width:860px){
+    .topbar{display:flex}
+    .sidebar{
+      position:fixed; z-index:30; left:0; top:0; height:100vh; width:82%; max-width:320px;
+      transform:translateX(-100%); transition:transform .22s ease;
+    }
+    body.nav-open .sidebar{transform:translateX(0)}
+    body.nav-open .overlay{display:block}
+    .content{padding:1.25rem 1rem 5rem}
+  }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <button class="iconbtn" id="menuBtn" aria-label="目次を開く">☰</button>
+  <span class="title">Webアプリケーションを支えるもの</span>
+  <button class="iconbtn" id="themeBtnMobile" aria-label="テーマ切り替え">◐</button>
+</div>
+
+<div class="overlay" id="overlay"></div>
+
+<div class="layout">
+  <nav class="sidebar" id="sidebar">
+    <h1>Webアプリケーションを支えるもの</h1>
+    <p class="sub">— 現場エンジニアのための「下から」の学び直し —</p>
+    <button class="iconbtn theme-toggle" id="themeBtn">◐ ライト / ダーク</button>
+    <ul class="toc" id="toc">
+      <li><a href="#top">はじめに・題材とペルソナ</a></li>
+
+      <li class="part">第0部　足元の道具と言語</li>
+      <li><a href="#ch1">1. ターミナルとシェル</a></li>
+      <li><a href="#ch2">2. Gitの内部モデル</a></li>
+      <li><a href="#ch3">3. パッケージマネージャと依存解決</a></li>
+      <li><a href="#ch4">4. 言語の足元</a></li>
+      <li><a href="#ch5">5. 文字コードとエンコーディング</a></li>
+      <li><a href="#ch6">6. 計算量とデータ構造</a></li>
+      <li><a href="#ch7">7. 正規表現</a></li>
+
+      <li class="part">第1部　リクエストが届くまで</li>
+      <li><a href="#ch8">8. URL入力から画面表示まで</a></li>
+      <li><a href="#ch9">9. HTTPの設計思想</a></li>
+      <li><a href="#ch10">10. HTTP/1.1 → 2 → 3</a></li>
+      <li><a href="#ch11">11. ブラウザ側の基礎</a></li>
+      <li><a href="#ch12">12. JavaScriptの非同期モデル</a></li>
+
+      <li class="part">第2部　サーバの中で起きていること</li>
+      <li><a href="#ch13">13. Webサーバとアプリケーションサーバ</a></li>
+      <li><a href="#ch14">14. プロセス・スレッド・イベントループ</a></li>
+
+      <li class="part">第3部　データベース</li>
+      <li><a href="#ch15">15. リレーショナルモデルの考え方</a></li>
+      <li><a href="#ch16">16. 生SQLをちゃんと書く</a></li>
+      <li><a href="#ch17">17. 正規化の理論</a></li>
+      <li><a href="#ch18">18. インデックスとクエリプラン</a></li>
+      <li><a href="#ch19">19. トランザクションと分離レベル</a></li>
+      <li><a href="#ch20">20. コネクションプールとN+1</a></li>
+      <li><a href="#ch21">21. ActiveRecordの逆引き</a></li>
+      <li><a href="#ch22">22. マイグレーションとスキーマ設計</a></li>
+
+      <li class="part">第4部　状態と信頼の設計</li>
+      <li><a href="#ch23">23. セッションと認証</a></li>
+      <li><a href="#ch24">24. 認可という別問題</a></li>
+      <li><a href="#ch25">25. キャッシュの階層</a></li>
+      <li><a href="#ch26">26. セキュリティの基礎体力</a></li>
+
+      <li class="part">第5部　壊れることを前提に</li>
+      <li><a href="#ch27">27. 冪等性とリトライ</a></li>
+      <li><a href="#ch28">28. 非同期処理とキュー</a></li>
+      <li><a href="#ch29">29. 観測可能性</a></li>
+
+      <li class="part">第6部　変化に耐える設計</li>
+      <li><a href="#ch30">30. モジュール分割と依存の方向</a></li>
+      <li><a href="#ch31">31. テストのピラミッドと現実</a></li>
+      <li><a href="#ch32">32. 技術選定という意思決定</a></li>
+    </ul>
+  </nav>
+
+  <div class="content">
+    <main id="top">
+      <section class="chapter" id="intro">
+        <h2>はじめに</h2>
+        <p>この本は、現場でWebアプリケーションを作れるようになったエンジニアが、その足元にある基礎を<strong>「下から」もう一度組み立て直す</strong>ための一冊です。フレームワークの使い方はもう知っている。動くものは作れる。けれど、ActiveRecordが隠している部分、HTTPの向こう側、データベースが本当は何をしているか——そういう「普段は触らなくても回る層」に、なんとなくの歯抜けがある。その穴を埋めるのが本書の目的です。</p>
+        <p>だから本書は<strong>HOWではなくWHYを書きます</strong>。手順やAPIリファレンスは調べればわかります。そうではなく「なぜそういう仕組みになっているのか」「元々どんな問題を解決するために生まれたのか」を軸にします。仕組みの<em>意図</em>をつかめば、細かなAPIが変わっても、自分の頭で対応できるようになるからです。</p>
+        <p><strong>想定読者。</strong>Rails中心の実務経験があり、実装スキルは高い方。ただし長くMongoDBを中心としたプロダクトに関わってきたため、RDBの常識——正規化・JOIN・トランザクション・インデックス設計——の感覚に自覚的なズレがある。そんな方を主な読者に想定しています。そのため、特に<a href="#part3">第3部（データベース）</a>を厚くし、随所に「MongoDBではこう考えていたが、RDBではこう捉え直す」という対比コラムを挟みます。初心者向けの過剰な説明はしません。足りている箇所は遠慮なく読み飛ばしてください。各章の冒頭に「この章で埋まる穴」を数行で置いてあるので、それを読み飛ばしの判断材料にできます。</p>
+        <p><strong>読み方。</strong>本書は第0部から第6部までの7部・全32章です。頭から順に読む必要はありませんが、第3部だけは前の章の題材（下記のRailsアプリ）を引き継いで進むので、通して読むことをおすすめします。各章末には「理解度チェック」を3問置きました（答えは折りたたみ）。コード例はRuby / Rails / SQL を中心に、比較のためJavaScriptを使うことがあります。</p>
+      </section>
+
+      <section class="chapter" id="material">
+        <h2>本書の題材 — 架空のRailsアプリ「Zephyr」</h2>
+        <p>本書のコード例は、全編を通じて<strong>Zephyr</strong>という架空のサービスを題材にします。章をまたいで同じモデル・同じテーブルが登場するので、ここで世界観をつかんでおいてください。</p>
+        <div class="persona-card">
+          <h3>Zephyr — 社内向けの学習イベント管理サービス</h3>
+          <p>社内勉強会・技術イベントの告知と参加申し込み、参加後のフィードバック収集を行うRailsアプリ。「ユーザーがイベントに申し込み、開催後にレビューを書く」という、EC・予約・SNSのどれにも通じる普遍的なドメインを持つため、正規化・JOIN・トランザクション・N+1のすべてを自然に例示できます。</p>
+          <div class="scroll-x"><table>
+            <tr><th>主要モデル</th><th>役割</th><th>主な関連</th></tr>
+            <tr><td><code>User</code></td><td>利用者（社員）</td><td>has_many :registrations, :reviews</td></tr>
+            <tr><td><code>Event</code></td><td>勉強会・イベント</td><td>belongs_to :organizer(User) / has_many :registrations</td></tr>
+            <tr><td><code>Registration</code></td><td>参加申し込み（中間）</td><td>belongs_to :user, :event（状態: applied/confirmed/canceled）</td></tr>
+            <tr><td><code>Review</code></td><td>開催後のレビュー</td><td>belongs_to :user, :event（rating 1..5）</td></tr>
+            <tr><td><code>Tag</code> / <code>EventTag</code></td><td>イベントの分類（多対多）</td><td>Event ⇄ EventTag ⇄ Tag</td></tr>
+          </table></div>
+        </div>
+        <aside class="mongo-note"><span class="tag">MongoDB脳の翻訳</span>
+        MongoDBなら、この題材はおそらく<code>events</code>コレクションのドキュメントに参加者やレビューを配列で<strong>埋め込む</strong>設計から始めたはずです。本書では逆に、あえて<code>users</code> / <code>events</code> / <code>registrations</code> / <code>reviews</code>という別々のテーブルに<strong>分けて参照で結ぶ</strong>ところから出発します。「なぜ分けるのか」「いつ埋め込みに相当する非正規化を選ぶのか」は第3部（特に<a href="#ch17">第17章</a>）でじっくり翻訳していきます。</aside>
+        <p class="placeholder">（各モデルの具体的なスキーマ・カラム定義は第3部で順次登場します。ここでは登場人物の顔ぶれだけ押さえてください。）</p>
+      </section>
+
+<!-- ================= 第0部 ================= -->
+      <section class="part-cover" id="part0">
+        <h2>第0部　足元の道具と言語</h2>
+        <p class="part-lead">毎日使っているのに、正体を説明しろと言われると詰まる道具たち。シェル、Git、依存解決、言語の値と参照、文字コード、計算量、正規表現。ここを固めておくと、以降の章の土台が安定します。</p>
+      </section>
+
+      <section class="chapter" id="ch1">
+        <h2>第1章　ターミナルとシェル</h2>
+        <div class="chap-hole"><span class="label">この章で埋まる穴</span>パス解決・環境変数・パーミッション・パイプとリダイレクトを「なんとなく」で使っている人が、シェルが何をしているのかを一本の理屈でつかむ章。<code>$PATH</code>はなぜ順序が重要か、<code>|</code>と<code>&gt;</code>は何を繋ぎ替えているのかを、ファイルディスクリプタの視点から理解します。</div>
+        <p class="placeholder">（執筆予定）</p>
+      </section>
+
+      <section class="chapter" id="ch2">
+        <h2>第2章　Gitの内部モデル</h2>
+        <div class="chap-hole"><span class="label">この章で埋まる穴</span>コマンドの丸暗記から卒業する章。コミットは差分ではなく<strong>スナップショット</strong>、ブランチは<strong>ただのポインタ</strong>、mergeとrebaseは何を作り替えているのか。オブジェクトモデル（blob/tree/commit）から理解すれば、conflictもdetached HEADも怖くなくなります。</div>
+        <p class="placeholder">（執筆予定）</p>
+      </section>
+
+      <section class="chapter" id="ch3">
+        <h2>第3章　パッケージマネージャと依存解決</h2>
+        <div class="chap-hole"><span class="label">この章で埋まる穴</span><code>Gemfile.lock</code>が正確には何を固定しているのか。バージョン制約の解決（SATに近い問題）、セマンティックバージョニングの約束、lockファイルをコミットする理由。「なぜか手元では動くのにCIで壊れる」の多くはここに根があります。</div>
+        <p class="placeholder">（執筆予定）</p>
+      </section>
+
+      <section class="chapter" id="ch4">
+        <h2>第4章　言語の足元</h2>
+        <div class="chap-hole"><span class="label">この章で埋まる穴</span>値と参照、ミュータビリティ、例外設計、そして金額計算での浮動小数点とDecimal。<code>0.1 + 0.2 != 0.3</code>がなぜ起きるか、Webアプリで金額をIntegerやBigDecimalで持つべき理由を、IEEE 754の仕組みから腹落ちさせます。</div>
+        <p class="placeholder">（執筆予定）</p>
+      </section>
+
+      <section class="chapter" id="ch5">
+        <h2>第5章　文字コードとエンコーディング</h2>
+        <div class="chap-hole"><span class="label">この章で埋まる穴</span>「文字」と「バイト列」は別物だという一線。UnicodeとUTF-8の関係、コードポイントと符号化の違い、文字化けが起きる原因の類型。DBのcollation、URLエンコード、絵文字のサロゲートペアまで、後続の章の伏線を張ります。</div>
+        <p class="placeholder">（執筆予定）</p>
+      </section>
+
+      <section class="chapter" id="ch6">
+        <h2>第6章　計算量とデータ構造</h2>
+        <div class="chap-hole"><span class="label">この章で埋まる穴</span>O記法を「なんとなく速い/遅い」で終わらせないための章。配列・ハッシュ・連結リストの得意不得意、<code>Array#include?</code>とSetの違い。この直観が、第18章のインデックス（B-tree）や第20章のN+1問題の理解に直結します。</div>
+        <p class="placeholder">（執筆予定）</p>
+      </section>
+
+      <section class="chapter" id="ch7">
+        <h2>第7章　正規表現</h2>
+        <div class="chap-hole"><span class="label">この章で埋まる穴</span>読める・書けるようになるための最小限の理論。文字クラス、量指定子、グループ、アンカー、そして貪欲/非貪欲。バックトラッキングによる暴走（ReDoS）がなぜ起きるかまで触れ、「なんとなく貼り付けた正規表現」から卒業します。</div>
+        <p class="placeholder">（執筆予定）</p>
+      </section>
+
+<!-- ================= 第1部 ================= -->
+      <section class="part-cover" id="part1">
+        <h2>第1部　リクエストが届くまで</h2>
+        <p class="part-lead">ブラウザのアドレスバーにURLを打ってからサーバにリクエストが届くまで、そして返ってきたものが画面になるまで。DNS・TCP・TLS・HTTP・ブラウザ・非同期。普段は透明な層を一本の物語として辿ります。</p>
+      </section>
+
+      <section class="chapter" id="ch8">
+        <h2>第8章　URLを入力してから画面が出るまで</h2>
+        <div class="chap-hole"><span class="label">この章で埋まる穴</span>本部の背骨となる章。URL入力 → DNS解決 → TCP接続 → TLSハンドシェイク → HTTPリクエスト → レスポンス → レンダリング、という一連を「一本の物語」として通します。以降の章はこの物語の各段を拡大していく、と捉えてください。</div>
+        <p class="placeholder">（執筆予定）</p>
+      </section>
+
+      <section class="chapter" id="ch9">
+        <h2>第9章　HTTPの設計思想</h2>
+        <div class="chap-hole"><span class="label">この章で埋まる穴</span>メソッド・ステータスコード・ヘッダの「なぜ」。GETとPOSTの本質的な違い（安全性と冪等性）、ステータスコードの体系、ステートレスという設計判断が何を諦めて何を得たのか。RESTの下敷きになる思想を押さえます。</div>
+        <p class="placeholder">（執筆予定）</p>
+      </section>
+
+      <section class="chapter" id="ch10">
+        <h2>第10章　HTTP/1.1 → 2 → 3</h2>
+        <div class="chap-hole"><span class="label">この章で埋まる穴</span>バージョンごとに「何が問題で、何を解決したか」。1.1のHTTPヘッドオブラインブロッキング、2の多重化、3がTCPを捨ててQUIC（UDP上）へ向かった理由。プロトコルの進化を問題解決の連鎖として理解します。</div>
+        <p class="placeholder">（執筆予定）</p>
+      </section>
+
+      <section class="chapter" id="ch11">
+        <h2>第11章　ブラウザ側の基礎</h2>
+        <div class="chap-hole"><span class="label">この章で埋まる穴</span>HTMLセマンティクス、<code>form</code>の素の挙動（JSなしで何が起きるか）、レンダリングの流れ（パース→DOM/CSSOM→レイアウト→ペイント）、CSSボックスモデルの要点。フレームワークが隠している「ブラウザの素の動き」を取り戻します。</div>
+        <p class="placeholder">（執筆予定）</p>
+      </section>
+
+      <section class="chapter" id="ch12">
+        <h2>第12章　JavaScriptの非同期モデル</h2>
+        <div class="chap-hole"><span class="label">この章で埋まる穴</span>イベントループ、コールスタック、タスク/マイクロタスクキュー。Promiseとasync/awaitが「何の問題（コールバック地獄と例外の伝播）」を解決したのか。シングルスレッドなのに待たされないのはなぜか、を仕組みから理解します。</div>
+        <p class="placeholder">（執筆予定）</p>
+      </section>
+
+<!-- ================= 第2部 ================= -->
+      <section class="part-cover" id="part2">
+        <h2>第2部　サーバの中で起きていること</h2>
+        <p class="part-lead">リクエストがサーバに届いてから、Railsのコントローラに渡るまでの間に、いくつものプロセスが役割分担している。nginx・Puma・Rack、そして並行性モデルの基礎。</p>
+      </section>
+
+      <section class="chapter" id="ch13">
+        <h2>第13章　Webサーバとアプリケーションサーバ</h2>
+        <div class="chap-hole"><span class="label">この章で埋まる穴</span>nginx・Puma・Rackの役割分担。なぜアプリの前にWebサーバを置くのか、Rackという「共通のインターフェース」が何を標準化したのか。<code>rackup</code>の1メソッドがフレームワークとサーバをどう繋いでいるかを見ます。</div>
+        <p class="placeholder">（執筆予定）</p>
+      </section>
+
+      <section class="chapter" id="ch14">
+        <h2>第14章　プロセス・スレッド・イベントループ</h2>
+        <div class="chap-hole"><span class="label">この章で埋まる穴</span>並行性モデルの三つの流儀と、メモリ（スタック/ヒープ）のざっくり像。RubyのGVL、Pumaのプロセス×スレッド構成、Node/JSのイベントループの違い。「ワーカー数をいくつにすべきか」を勘でなく理屈で語れるようにします。</div>
+        <p class="placeholder">（執筆予定）</p>
+      </section>
+
+<!-- ================= 第3部 ================= -->
+      <section class="part-cover" id="part3">
+        <h2>第3部　データベース</h2>
+        <p class="part-lead">本書の最重要パート。リレーショナルモデルの思想から、SQL・正規化・インデックス・トランザクション・N+1・ActiveRecordの裏側・スキーマ設計まで。MongoDB経験者の感覚を、RDBの土俵に一つずつ翻訳していきます。ここだけは通読推奨。</p>
+      </section>
+
+      <section class="chapter" id="ch15">
+        <h2>第15章　リレーショナルモデルの考え方</h2>
+        <div class="chap-hole"><span class="label">この章で埋まる穴</span>「なぜテーブルなのか」を集合と関係の理論から。ドキュメント指向（入れ子のJSON）とリレーショナル（フラットな集合＋関係）の<strong>思想の違い</strong>を丁寧に対比し、RDBが何を最適化しているのかを腹落ちさせる、第3部の入り口。</div>
+        <p class="placeholder">（執筆予定）</p>
+      </section>
+
+      <section class="chapter" id="ch16">
+        <h2>第16章　生SQLをちゃんと書く</h2>
+        <div class="chap-hole"><span class="label">この章で埋まる穴</span>SELECTの<strong>評価順序</strong>（FROM→WHERE→GROUP BY→HAVING→SELECT→ORDER BY）、JOINの種類、GROUP BY、サブクエリ、ウィンドウ関数入門。ActiveRecordに頼らず、意図したSQLを自分で書き下せるようになります。</div>
+        <p class="placeholder">（執筆予定）</p>
+      </section>
+
+      <section class="chapter" id="ch17">
+        <h2>第17章　正規化の理論</h2>
+        <div class="chap-hole"><span class="label">この章で埋まる穴</span>第3正規形まで。「なぜ分けるのか」「いつ崩す（非正規化する）のか」。MongoDBで「埋め込むか参照するか」で悩んでいた判断を、正規化理論の言葉に<strong>翻訳する対比表</strong>を用意します。第3部の核心章。</div>
+        <p class="placeholder">（執筆予定）</p>
+      </section>
+
+      <section class="chapter" id="ch18">
+        <h2>第18章　インデックスとクエリプラン</h2>
+        <div class="chap-hole"><span class="label">この章で埋まる穴</span>B-treeの構造、<code>EXPLAIN</code>の読み方、複合インデックスの「左端一致」がなぜ効くか。第6章の計算量の直観がここで回収されます。「とりあえずインデックスを貼る」から「効くインデックスを設計する」へ。</div>
+        <p class="placeholder">（執筆予定）</p>
+      </section>
+
+      <section class="chapter" id="ch19">
+        <h2>第19章　トランザクションと分離レベル</h2>
+        <div class="chap-hole"><span class="label">この章で埋まる穴</span>ACID、ロック、分離レベル（Read Committed / Repeatable Read など）、デッドロック。MongoDBが長くドキュメント単位の原子性で戦ってきた事情と、RDBのマルチ行トランザクションの前提の違いを対比します。</div>
+        <p class="placeholder">（執筆予定）</p>
+      </section>
+
+      <section class="chapter" id="ch20">
+        <h2>第20章　コネクションプールとN+1</h2>
+        <div class="chap-hole"><span class="label">この章で埋まる穴</span>DBコネクションが有限資源であること、プールの意味、そしてN+1問題が<strong>ActiveRecordの下で</strong>どう発生するか。Zephyrのイベント一覧で実際にN+1を起こし、SQLログで目撃してから直します。</div>
+        <p class="placeholder">（執筆予定）</p>
+      </section>
+
+      <section class="chapter" id="ch21">
+        <h2>第21章　ActiveRecordの逆引き</h2>
+        <div class="chap-hole"><span class="label">この章で埋まる穴</span>よく使うメソッドが<strong>実際に発行するSQL</strong>を暴く章。<code>includes</code> / <code>preload</code> / <code>eager_load</code>の違い、<code>scope</code>、<code>counter_cache</code>。ORMの「魔法」を、生成されるSQLとして見えるようにします。</div>
+        <p class="placeholder">（執筆予定）</p>
+      </section>
+
+      <section class="chapter" id="ch22">
+        <h2>第22章　マイグレーションとスキーマ設計の実務</h2>
+        <div class="chap-hole"><span class="label">この章で埋まる穴</span>外部キー制約・NOT NULL・CHECK制約を「使う」文化。アプリ層のバリデーションだけに頼らず、DBに不変条件を守らせる考え方。MongoDBのスキーマレス運用から来た人が最も感覚を入れ替えるべき所です。</div>
+        <p class="placeholder">（執筆予定）</p>
+      </section>
+
+<!-- ================= 第4部 ================= -->
+      <section class="part-cover" id="part4">
+        <h2>第4部　状態と信頼の設計</h2>
+        <p class="part-lead">ステートレスなHTTPの上で、どうやって「ログイン状態」や「この人にこの操作を許すか」を成立させるのか。セッション・認証・認可・キャッシュ・セキュリティ。</p>
+      </section>
+
+      <section class="chapter" id="ch23">
+        <h2>第23章　セッションと認証</h2>
+        <div class="chap-hole"><span class="label">この章で埋まる穴</span>ステートレスなHTTPで「ログイン状態」を保つ仕掛け。Cookie、サーバサイドセッション、トークン（JWT）、OAuthの本質。それぞれが「状態をどこに置くか」の選択であることを整理します。</div>
+        <p class="placeholder">（執筆予定）</p>
+      </section>
+
+      <section class="chapter" id="ch24">
+        <h2>第24章　認可という別問題</h2>
+        <div class="chap-hole"><span class="label">この章で埋まる穴</span>認証（誰か）と認可（何を許すか）は別問題——混ぜると事故る。ポリシーベース認可（Punditのような）の設計、ロールとパーミッションの違い。Zephyrで「主催者だけがイベントを編集できる」を例に考えます。</div>
+        <p class="placeholder">（執筆予定）</p>
+      </section>
+
+      <section class="chapter" id="ch25">
+        <h2>第25章　キャッシュの階層</h2>
+        <div class="chap-hole"><span class="label">この章で埋まる穴</span>ブラウザ・CDN・アプリ・DBという各層のキャッシュ。何をどこにキャッシュすべきか、そして「キャッシュ無効化はコンピュータサイエンスの難問」と言われる所以。整合性とのトレードオフを層ごとに捉えます。</div>
+        <p class="placeholder">（執筆予定）</p>
+      </section>
+
+      <section class="chapter" id="ch26">
+        <h2>第26章　セキュリティの基礎体力</h2>
+        <div class="chap-hole"><span class="label">この章で埋まる穴</span>XSS・CSRF・SQLインジェクションを<strong>仕組みから</strong>。なぜ起きるか、フレームワークがどう防いでいるか、その防御を自分で無効化してしまうアンチパターン。「エスケープ」と「プレースホルダ」の意味を根から理解します。</div>
+        <p class="placeholder">（執筆予定）</p>
+      </section>
+
+<!-- ================= 第5部 ================= -->
+      <section class="part-cover" id="part5">
+        <h2>第5部　壊れることを前提に</h2>
+        <p class="part-lead">ネットワークは切れ、プロセスは落ち、リクエストは二重に届く。壊れることを前提にした設計——冪等性・キュー・観測可能性——は、分散システムへの入口です。</p>
+      </section>
+
+      <section class="chapter" id="ch27">
+        <h2>第27章　冪等性とリトライ</h2>
+        <div class="chap-hole"><span class="label">この章で埋まる穴</span>「同じ操作を2回やっても結果が変わらない」という性質がなぜ分散システムの命綱なのか。リトライ・タイムアウト・二重送信。Zephyrの参加申し込みを例に、冪等キーの設計を考えます。分散システムの入口。</div>
+        <p class="placeholder">（執筆予定）</p>
+      </section>
+
+      <section class="chapter" id="ch28">
+        <h2>第28章　非同期処理とキュー</h2>
+        <div class="chap-hole"><span class="label">この章で埋まる穴</span>ジョブキューの設計原則。なぜメール送信や集計を「後回し」にするのか、at-least-once配信の含意、失敗したジョブの扱い（リトライ・DLQ）。第27章の冪等性がここで効いてきます。</div>
+        <p class="placeholder">（執筆予定）</p>
+      </section>
+
+      <section class="chapter" id="ch29">
+        <h2>第29章　観測可能性</h2>
+        <div class="chap-hole"><span class="label">この章で埋まる穴</span>ログ・メトリクス・トレースの三本柱、それぞれの「目的」の違い。障害時に「何が起きたか」を再構成できる状態をどう作るか。構造化ログ、分散トレーシングの発想を、後付けでなく設計として捉えます。</div>
+        <p class="placeholder">（執筆予定）</p>
+      </section>
+
+<!-- ================= 第6部 ================= -->
+      <section class="part-cover" id="part6">
+        <h2>第6部　変化に耐える設計</h2>
+        <p class="part-lead">コードは書いた瞬間から変更され続ける。依存の方向、テスト、技術選定。「正解」ではなくトレードオフを言語化する力を扱う、本書の締めくくり。</p>
+      </section>
+
+      <section class="chapter" id="ch30">
+        <h2>第30章　モジュール分割と依存の方向</h2>
+        <div class="chap-hole"><span class="label">この章で埋まる穴</span>レイヤードアーキテクチャの「なぜ」。依存の向きを一方向に保つと何が嬉しいのか、依存性逆転とは何をひっくり返すのか。「Fat Modelか、Service Objectか」の議論を、依存の方向という一つの物差しで捉え直します。</div>
+        <p class="placeholder">（執筆予定）</p>
+      </section>
+
+      <section class="chapter" id="ch31">
+        <h2>第31章　テストのピラミッドと現実</h2>
+        <div class="chap-hole"><span class="label">この章で埋まる穴</span>ユニット・統合・E2Eの比率という理想と、現場の現実。何をテストし、何をテストしないか。「テストが遅い/脆い」の原因を、テストの層とモックの使い方から診断できるようにします。</div>
+        <p class="placeholder">（執筆予定）</p>
+      </section>
+
+      <section class="chapter" id="ch32">
+        <h2>第32章　技術選定という意思決定</h2>
+        <div class="chap-hole"><span class="label">この章で埋まる穴</span>本書の締めくくり。「どっちが正しいか」ではなく「この文脈で何を取り何を捨てるか」を言語化する力。RDBかドキュメントDBか、といった選択を——本書で得た理解を総動員して——トレードオフとして語れるようにします。</div>
+        <p class="placeholder">（執筆予定）</p>
+      </section>
+
+    </main>
+  </div>
+</div>
+
+<script>
+(function(){
+  var root=document.documentElement, body=document.body;
+
+  // ---- theme toggle (no localStorage) ----
+  function currentDark(){
+    var t=root.getAttribute('data-theme');
+    if(t) return t==='dark';
+    return window.matchMedia('(prefers-color-scheme: dark)').matches;
+  }
+  function toggleTheme(){ root.setAttribute('data-theme', currentDark()?'light':'dark'); }
+  document.getElementById('themeBtn').addEventListener('click', toggleTheme);
+  document.getElementById('themeBtnMobile').addEventListener('click', toggleTheme);
+
+  // ---- mobile nav ----
+  var sidebar=document.getElementById('sidebar'), overlay=document.getElementById('overlay');
+  function openNav(){ body.classList.add('nav-open'); }
+  function closeNav(){ body.classList.remove('nav-open'); }
+  document.getElementById('menuBtn').addEventListener('click', openNav);
+  overlay.addEventListener('click', closeNav);
+  sidebar.addEventListener('click', function(e){ if(e.target.tagName==='A') closeNav(); });
+
+  // ---- scrollspy ----
+  var links=[].slice.call(document.querySelectorAll('#toc a'));
+  var map={};
+  links.forEach(function(a){ var id=a.getAttribute('href').slice(1); var el=document.getElementById(id); if(el) map[id]=a; });
+  var targets=Object.keys(map).map(function(id){return document.getElementById(id);});
+  function setActive(id){
+    links.forEach(function(a){a.classList.remove('active');});
+    if(map[id]){ map[id].classList.add('active'); map[id].scrollIntoView({block:'nearest'}); }
+  }
+  if('IntersectionObserver' in window){
+    var io=new IntersectionObserver(function(entries){
+      entries.forEach(function(en){ if(en.isIntersecting) setActive(en.target.id); });
+    },{rootMargin:'-10% 0px -80% 0px', threshold:0});
+    targets.forEach(function(t){ io.observe(t); });
+  }
+
+  // ---- lightweight syntax highlighter (Ruby / SQL / JavaScript) ----
+  // 使い方: <pre><code class="lang-ruby">…</code></pre>
+  // すでにHTMLエスケープ済みのテキストに対し、コメント→文字列→数値→キーワードの
+  // 優先順で1パスのトークン化を行い、<span class="tok-*"> を差し込む。
+  var KEYWORDS={
+    ruby:['def','end','class','module','if','elsif','else','unless','case','when','then','while','until','for','do','begin','rescue','ensure','raise','return','yield','self','nil','true','false','and','or','not','in','next','break','super','new','require','require_relative','attr_accessor','attr_reader','attr_writer','lambda','proc','puts','print','each','map','select','reject','include','extend'],
+    sql:['select','from','where','group','by','having','order','limit','offset','join','inner','left','right','outer','full','on','as','and','or','not','in','is','null','distinct','count','sum','avg','min','max','insert','into','values','update','set','delete','create','table','index','alter','add','drop','primary','key','foreign','references','constraint','unique','default','with','union','all','case','when','then','else','end','exists','between','like','over','partition','asc','desc'],
+    js:['var','let','const','function','return','if','else','for','while','do','switch','case','break','continue','default','new','class','extends','super','this','typeof','instanceof','in','of','null','undefined','true','false','async','await','yield','try','catch','finally','throw','import','export','from','as','delete','void','static','get','set']
+  };
+  function esc(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+  function highlight(code, lang){
+    var kw=KEYWORDS[lang]||[];
+    var ci=(lang==='sql'); // SQLはキーワードを大小無視
+    var kwSet={};
+    kw.forEach(function(k){ kwSet[k]=true; });
+    // コメントパターン（言語別）
+    var comment;
+    if(lang==='ruby'){ comment='#[^\\n]*'; }
+    else if(lang==='sql'){ comment='--[^\\n]*'; }
+    else { comment='\\/\\/[^\\n]*|\\/\\*[\\s\\S]*?\\*\\/'; }
+    var str="'(?:\\\\.|[^'\\\\])*'|\"(?:\\\\.|[^\"\\\\])*\"|`(?:\\\\.|[^`\\\\])*`";
+    var num='\\b\\d[\\d_]*(?:\\.\\d+)?\\b';
+    var word='[A-Za-z_][A-Za-z0-9_]*';
+    var re=new RegExp('('+comment+')|('+str+')|('+num+')|('+word+')','g');
+    return code.replace(re, function(m, c, s, n, w){
+      if(c!==undefined) return '<span class="tok-cmt">'+m+'</span>';
+      if(s!==undefined) return '<span class="tok-str">'+m+'</span>';
+      if(n!==undefined) return '<span class="tok-num">'+m+'</span>';
+      if(w!==undefined){
+        var key=ci?w.toLowerCase():w;
+        if(kwSet[key]) return '<span class="tok-kw">'+m+'</span>';
+        return m;
+      }
+      return m;
+    });
+  }
+  var blocks=document.querySelectorAll('pre code[class*="lang-"]');
+  [].forEach.call(blocks, function(el){
+    var cls=el.className.match(/lang-(\w+)/);
+    if(!cls) return;
+    var lang=cls[1];
+    // 生テキストを取り出してエスケープ→ハイライト
+    var raw=el.textContent;
+    el.innerHTML=highlight(esc(raw), lang);
+  });
+})();
+</script>
+</body>
+</html>
