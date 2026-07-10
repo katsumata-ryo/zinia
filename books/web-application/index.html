@@ -556,7 +556,58 @@ tax_cents   = (price_cents * 10 / 100)   # 整数演算なら誤差が出ない<
       <section class="chapter" id="ch6">
         <h2>第6章　計算量とデータ構造</h2>
         <div class="chap-hole"><span class="label">この章で埋まる穴</span>O記法を「なんとなく速い/遅い」で終わらせないための章。配列・ハッシュ・連結リストの得意不得意、<code>Array#include?</code>とSetの違い。この直観が、第18章のインデックス（B-tree）や第20章のN+1問題の理解に直結します。</div>
-        <p class="placeholder">（執筆予定）</p>
+
+        <p>計算量の話は、アルゴリズムの試験のためにあるのではない。実務でいちばん効くのは、<strong>「このコードはデータ量が10倍になったとき、何倍遅くなるか」を見積もれるようになること</strong>だ。手元の少ないデータでは一瞬でも、本番の百万件で固まるコードには共通の匂いがある。この章では、O記法という道具と、配列・ハッシュ・連結リストという基本データ構造の得意不得意を、その匂いを嗅ぎ分けられる形で身につける。ここで得る直観は、後のインデックス（<a href="#ch18">第18章</a>）やN+1（<a href="#ch20">第20章</a>）の理解にそのまま繋がる。</p>
+
+        <h3>O記法は「増え方」を表す</h3>
+        <p>O記法（オーダー記法）は、実行時間の<strong>絶対値</strong>ではなく、入力サイズnが増えたときに処理時間が<strong>どういうペースで増えるか</strong>を表す。定数倍や小さい項は無視して、支配的な増え方だけを見る。だから<code>O(n)</code>は「nに比例して増える」、<code>O(1)</code>は「nがいくら増えても一定」を意味する。</p>
+        <div class="scroll-x"><table>
+          <tr><th>記法</th><th>増え方</th><th>nが100→10000のとき</th><th>例</th></tr>
+          <tr><td><code>O(1)</code></td><td>一定</td><td>変わらない</td><td>ハッシュの参照、配列の添字アクセス</td></tr>
+          <tr><td><code>O(log n)</code></td><td>ごく緩やか</td><td>約2倍</td><td>二分探索、B-treeインデックス</td></tr>
+          <tr><td><code>O(n)</code></td><td>比例</td><td>100倍</td><td>配列の線形探索、全件ループ</td></tr>
+          <tr><td><code>O(n log n)</code></td><td>やや急</td><td>約130倍</td><td>効率的なソート</td></tr>
+          <tr><td><code>O(n²)</code></td><td>急激</td><td>10000倍</td><td>二重ループ、ネストした照合</td></tr>
+        </table></div>
+        <p>この表の実感が大事だ。<code>O(n)</code>と<code>O(n²)</code>は、小さなnでは大差ないが、nが100倍になると前者は100倍・後者は1万倍に膨れる。「ローカルでは速かったのに本番で激遅」の多くは、隠れた<code>O(n²)</code>——たとえばループの中で毎回配列を線形探索している——が、本番のデータ量で牙を剥いたケースだ。</p>
+
+        <h3>配列・ハッシュ・連結リストの得意不得意</h3>
+        <p>データ構造ごとに、操作の計算量が違う。ここを押さえると「どの構造を選ぶか」を勘でなく理屈で決められる。</p>
+        <div class="scroll-x"><table>
+          <tr><th>操作</th><th>配列(Array)</th><th>ハッシュ(Hash)</th><th>連結リスト</th></tr>
+          <tr><td>添字/キーでアクセス</td><td>O(1)</td><td>O(1) 平均</td><td>O(n)</td></tr>
+          <tr><td>値で検索（含むか）</td><td>O(n)</td><td>O(1) 平均</td><td>O(n)</td></tr>
+          <tr><td>先頭に挿入</td><td>O(n)</td><td>—</td><td>O(1)</td></tr>
+          <tr><td>末尾に追加</td><td>O(1) 償却</td><td>O(1) 平均</td><td>O(1)（末尾参照あり）</td></tr>
+        </table></div>
+        <p><strong>配列</strong>は連続したメモリに要素を並べる。だから「i番目」を添字で一発で取れる（O(1)）が、「この値が入っているか」を知るには先頭から順に見るしかない（O(n)）。<strong>ハッシュ</strong>はキーをハッシュ関数で格納位置に変換するので、キーによるアクセスも「値の有無」の判定も平均O(1)。ただし順序は保証の対象外（Rubyは挿入順を保つが、これは言語の付加仕様）。<strong>連結リスト</strong>は各要素が次への参照を持つ数珠つなぎで、途中への挿入・削除がO(1)と強いが、「i番目」を得るには辿るしかなくO(n)。</p>
+
+        <h3>実務に効く一例 — <code>include?</code> と Set</h3>
+        <p>この直観がいちばん頻繁に効くのが「重複チェック」や「ホワイトリスト照合」だ。配列に対する<code>include?</code>は線形探索でO(n)。これをループの中で回すと、全体はO(n²)になる。</p>
+        <pre><code class="lang-ruby"># 悪い例：allowed が大きいと、ループ全体が O(n × m) に膨らむ
+allowed = User.pluck(:email)          # 数万件の配列
+target_users.select do |u|
+  allowed.include?(u.email)           # 毎回 O(n) の線形探索
+end
+
+# よい例：Set に入れておけば照合は平均 O(1)
+require "set"
+allowed = Set.new(User.pluck(:email))  # ハッシュベース
+target_users.select do |u|
+  allowed.include?(u.email)            # 平均 O(1)
+end</code></pre>
+        <p>やっていることは同じ「含むか判定」だが、データ構造を配列からSet（内部はハッシュ）へ変えるだけで、照合の計算量がO(n)からO(1)に落ちる。件数が増えるほど差は劇的だ。「ループの中で配列を<code>include?</code>していないか」は、パフォーマンス劣化を疑うときの定番チェックポイントになる。</p>
+        <aside class="eng-note"><span class="tag">補足</span>
+        「O(1)平均」の<strong>平均</strong>には含みがある。ハッシュは異なるキーが同じ格納位置に落ちる（衝突する）ことがあり、衝突が多いと最悪O(n)に劣化しうる。実用上の実装は衝突を抑えるよう作られているので平均O(1)を期待してよいが、「ハッシュは常に一定時間」と絶対視はしないほうがよい。この「ならして速い」という感覚は、次章以降の性能の話にも通底する。</aside>
+
+        <h3>次章以降への伏線</h3>
+        <p>ここで得た「線形探索O(n)は件数が増えると効かない、木構造ならO(log n)で探せる」という直観は、そのまま<strong>データベースのインデックス</strong>の話につながる。DBが100万件のテーブルから一瞬で目的の行を見つけられるのは、B-treeという平衡木でO(log n)の探索を実現しているからだ（<a href="#ch18">第18章</a>）。逆にインデックスのない列で検索するとフルスキャン（O(n)相当）になる——これは配列の<code>include?</code>とまったく同じ構図だ。計算量の目でDBを見ると、「なぜインデックスが要るのか」が一段深く理解できる。</p>
+
+        <div class="check-wrap"><h3>理解度チェック</h3>
+          <details class="check"><summary>Q1. O記法は何を表しているか。<code>O(n)</code>と<code>O(n²)</code>は、nが100倍になるとそれぞれ何倍になるか？</summary><p>入力サイズnが増えたときの処理時間の<strong>増え方</strong>を、定数倍を無視して表す。<code>O(n)</code>はnに比例するのでnが100倍なら100倍、<code>O(n²)</code>は100²＝1万倍になる。小さなnでは差が見えず、本番のデータ量で急に牙を剥くのがO(n²)の怖さ。</p></details>
+          <details class="check"><summary>Q2. 配列で「i番目のアクセス」がO(1)なのに「値を含むか」がO(n)なのはなぜか。ハッシュはなぜ両方O(1)（平均）なのか？</summary><p>配列は連続メモリなので添字から位置を直接計算でき添字アクセスはO(1)。だが値の有無は先頭から順に照合するしかなくO(n)。ハッシュはキーをハッシュ関数で格納位置に変換するため、キーアクセスも値の有無判定も平均O(1)で行える。</p></details>
+          <details class="check"><summary>Q3. 大きな配列への<code>include?</code>をループ内で回すと何が問題か。どう直すか？</summary><p>配列の<code>include?</code>は線形探索O(n)で、ループ内で回すと全体がO(n²)に膨れ、件数増で激遅になる。照合対象を<code>Set</code>（内部はハッシュ）にしておけば<code>include?</code>が平均O(1)になり、全体をO(n)に落とせる。</p></details>
+        </div>
       </section>
 
       <section class="chapter" id="ch7">
