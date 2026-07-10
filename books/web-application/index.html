@@ -1697,7 +1697,105 @@ SELECT * FROM users WHERE id IN (7, 3, 12, 5, ...);</code></pre>
       <section class="chapter" id="ch21">
         <h2>第21章　ActiveRecordの逆引き</h2>
         <div class="chap-hole"><span class="label">この章で埋まる穴</span>よく使うメソッドが<strong>実際に発行するSQL</strong>を暴く章。<code>includes</code> / <code>preload</code> / <code>eager_load</code>の違い、<code>scope</code>、<code>counter_cache</code>。ORMの「魔法」を、生成されるSQLとして見えるようにします。</div>
-        <p class="placeholder">（執筆予定）</p>
+
+        <p>前章でN+1を<code>includes</code>で直したが、「なぜ直るのか」の下半分——<strong>ActiveRecordが実際に吐くSQL</strong>——はまだ暴いていない。この章はそれをやる。ActiveRecord（AR）は「Rubyのメソッド呼び出し」を「SQL」へ翻訳する巨大な変換器だ。普段はその翻訳を意識しなくていいのがORMの価値だが、<strong>遅いクエリを直すとき、意図しないクエリが飛ぶとき、翻訳結果を読めないと手も足も出ない</strong>。ここでの方針は徹底して一つ——<strong>ARのメソッドを書いたら、その隣に「これが吐くSQL」を必ず併記する。</strong> 魔法を、見えるコードに落とす。全メソッドは網羅しない。実務で効きが大きく、かつ<strong>誤解されやすいもの</strong>——先読み三兄弟、<code>scope</code>、<code>counter_cache</code>、<code>pluck</code>/<code>select</code>、<code>exists?</code>、<code>find_each</code>——に絞る。方言はPostgreSQL基本だ。</p>
+
+        <h3>まず大原則 — ARのクエリは「遅延評価」される</h3>
+        <p>翻訳を読む前に、一つだけ土台を。<code>Event.where(...)</code>は<strong>その場ではSQLを発行しない</strong>。<code>ActiveRecord::Relation</code>という「未実行のクエリの設計図」を返すだけだ。実際にSQLが飛ぶのは、結果が<strong>本当に必要になった瞬間</strong>——<code>each</code>・<code>to_a</code>・<code>first</code>・<code>count</code>・ビューでの反復など。だから<code>where</code>をメソッドチェーンで繋いでも、SQLは<strong>最後に1本</strong>にまとまる。</p>
+        <pre><code class="lang-ruby">rel = Event.where("starts_at &gt; ?", Time.now)   # まだSQLは飛ばない（Relation）
+rel = rel.where(capacity: 30..)                # まだ飛ばない（条件を足しただけ）
+rel.order(:starts_at).limit(10).to_a           # ← ここで初めて1本のSQLに翻訳・実行</code></pre>
+        <p>この遅延評価が、前章のN+1（アクセスした瞬間に飛ぶ遅延読み込み）とも、<code>scope</code>の合成可能性とも繋がっている。<strong>「Relationはまだクエリではない、実行の引き金は別にある」</strong>——これがAR読解の第一歩だ。</p>
+
+        <h3>先読み三兄弟 — includes / preload / eager_load</h3>
+        <p>N+1解消の要。三つは目的が同じ（関連を先読み）だが、<strong>吐くSQLが違う</strong>。ここを併記で暴くのが本章のハイライトだ。</p>
+        <p><strong>preload — 「別クエリでIN取得」。</strong> 必ず<strong>2本以上</strong>のクエリに分ける。</p>
+        <pre><code class="lang-ruby">Event.preload(:registrations).limit(20)</code></pre>
+        <pre><code class="lang-sql">SELECT * FROM events LIMIT 20;
+SELECT * FROM registrations WHERE event_id IN (1,2,3, ... 20件分のid);</code></pre>
+        <p><strong>eager_load — 「LEFT OUTER JOINで1本」。</strong> 親と関連を1クエリで結合して取る。</p>
+        <pre><code class="lang-ruby">Event.eager_load(:registrations).limit(20)</code></pre>
+        <pre><code class="lang-sql">SELECT events.id AS t0_r0, ..., registrations.id AS t1_r0, ...
+FROM events
+LEFT OUTER JOIN registrations ON registrations.event_id = events.id
+WHERE events.id IN (SELECT id FROM events LIMIT 20);   -- ※ JOINで行が増えるため LIMIT はサブクエリ側に回る</code></pre>
+        <p>ここで<a href="#ch20">第20章</a>の補足が効く。<code>has_many</code>をeager_loadすると<strong>結果行が掛け算で膨らむ</strong>（events20×各申込）。だからARは既定でpreload（IN取得）に寄せることが多い。</p>
+        <p><strong>includes — 「賢いつもりの自動選択」。</strong> 既定は<code>preload</code>（別クエリ）だが、<strong>その関連を<code>where</code>や<code>order</code>の条件に使うと、JOINが必要になるので<code>eager_load</code>に自動で切り替わる</strong>。</p>
+        <pre><code class="lang-ruby">Event.includes(:registrations).limit(20)
+#   → registrations を条件に使っていない → preload（2本のSQL）
+
+Event.includes(:registrations)
+     .where(registrations: { status: 'confirmed' }).references(:registrations)
+#   → registrations を where で参照 → eager_load（LEFT JOINの1本）に切替</code></pre>
+        <div class="scroll-x"><table>
+          <thead><tr><th>メソッド</th><th>発行されるSQL</th><th>使いどころ</th></tr></thead>
+          <tbody>
+            <tr><td><code>preload</code></td><td>常に別クエリ＋<code>IN</code>（複数本）</td><td>関連を条件に使わず、ただ先読みしたい</td></tr>
+            <tr><td><code>eager_load</code></td><td>常に<code>LEFT OUTER JOIN</code>（1本）</td><td>関連の値で<code>where</code>/<code>order</code>したい</td></tr>
+            <tr><td><code>includes</code></td><td>状況で上の二つを自動選択</td><td>迷ったらこれ。条件参照時は<code>references</code>を添える</td></tr>
+          </tbody>
+        </table></div>
+        <p><strong>「<code>includes</code>を書いたのに関連条件でエラーが出た（<code>references</code>が要ると言われた）」</strong>のは、この自動選択の仕組みが原因だ。includesは「preloadのつもりでいたら、where句が関連を参照していてJOINが必要になった」ときに混乱する。<strong>挙動を確実にしたいなら、preload/eager_loadを名指しで使う</strong>のが上級者の選択だ。</p>
+
+        <h3>scope — 「名前のついたRelation断片」</h3>
+        <p><code>scope</code>は再利用可能なクエリの部品だ。重要なのは<strong>返すのがRelationなので、遅延評価のまま連鎖できる</strong>点。</p>
+        <pre><code class="lang-ruby">class Event &lt; ApplicationRecord
+  scope :upcoming,  -&gt; { where("starts_at &gt; ?", Time.now) }
+  scope :popular,   -&gt; { where("capacity &gt;= ?", 50) }
+end
+
+Event.upcoming.popular.order(:starts_at)   # scopeを合成 → SQLは1本</code></pre>
+        <pre><code class="lang-sql">SELECT * FROM events
+WHERE starts_at &gt; '2026-07-10 ...' AND capacity &gt;= 50
+ORDER BY starts_at;</code></pre>
+        <p>二つのscopeが<code>AND</code>で1本のSQLに合成された。これが前段の「Relationはまだクエリでない」の実利だ。<strong>クラスメソッドで書いても似たことはできるが、scopeは常にRelationを返す（nilガードなど）ことが保証され、チェーンで壊れにくい。</strong></p>
+
+        <h3>counter_cache — COUNTを「カラムに固める」</h3>
+        <p><a href="#ch17">第17章</a>で「集計値のキャッシュは非正規化の典型で、<code>counter_cache</code>で扱う」と予告した。<strong>その実例がここだ。</strong> イベント一覧で毎回「確定申込は何人か」を<code>event.registrations.count</code>で数えると、行ごとにCOUNTクエリが飛ぶ——これもN+1の一種だ。</p>
+        <pre><code class="lang-ruby">event.registrations.count   # 毎回この COUNT が飛ぶ
+</code></pre>
+        <pre><code class="lang-sql">SELECT COUNT(*) FROM registrations WHERE event_id = 42;</code></pre>
+        <p><code>counter_cache</code>は、この件数を<code>events.registrations_count</code>という<strong>冗長カラム</strong>に持ち、<strong>子が増減するたびにARが自動でカラムを<code>+1</code>/<code>-1</code>する</strong>。</p>
+        <pre><code class="lang-ruby">class Registration &lt; ApplicationRecord
+  belongs_to :event, counter_cache: true    # events.registrations_count を自動更新
+end
+# 以後、件数は event.registrations_count でカラムを読むだけ（COUNTクエリ不要）</code></pre>
+        <pre><code class="lang-sql">-- registration を作ると、AR が INSERT と同じトランザクションでこれを撃つ
+INSERT INTO registrations (...) VALUES (...);
+UPDATE events SET registrations_count = registrations_count + 1 WHERE id = 42;</code></pre>
+        <p>読みからCOUNTを消せる代わりに、<strong>「事実（registrationsの行数）」と「導出値（カラム）」が二重化する</strong>。この二つがズレたら（バグや直接SQLでの操作で起こる）、<code>Event.reset_counters(id, :registrations)</code>で数え直す。<strong>非正規化とは「読みを速くする代わりに、整合性維持の責任を自分で引き受ける取引」</strong>——<a href="#ch17">第17章</a>の抽象論が、ここで具体的なカラムと<code>UPDATE</code>文になった。</p>
+        <aside class="eng-note"><span class="tag">補足</span>
+        <code>counter_cache</code>の<code>UPDATE events SET ... = ... + 1</code>は、同じイベントに<strong>同時に申込が殺到すると、そのevents行の更新でロック競合</strong>が起きうる（<a href="#ch19">第19章</a>）。人気イベントのcounter_cacheが書き込みのボトルネックになる、というのは実在する落とし穴だ。「非正規化は読みを速くするが書きに負荷を寄せる」という綱引きが、ロックのレイヤーでも顔を出す。件数の厳密なリアルタイム性が不要なら、定期的な集計バッチで済ませる選択もある。</aside>
+
+        <h3>取り方の使い分け — pluck / select / exists? / find_each</h3>
+        <p>最後に、日々の「取り方」の解像度を上げる。同じ結果に見えて<strong>吐くSQLとメモリの使い方が違う</strong>四つだ。</p>
+        <p><strong><code>pluck</code> vs <code>select</code>。</strong> どちらも列を絞るが、<code>pluck</code>は<strong>ActiveRecordオブジェクトを作らず、値の配列を直接返す</strong>。<code>select</code>は（絞った列だけの）ARオブジェクトを返す。</p>
+        <pre><code class="lang-ruby">Event.where(capacity: 30..).pluck(:title)
+#   → ["Rails輪読会", "Go入門", ...]  （ただのStringの配列。モデルを作らない＝軽い）
+
+Event.where(capacity: 30..).select(:id, :title)
+#   → [#&lt;Event id: 1, title: ...&gt;, ...]  （Eventインスタンス。titleを読める）</code></pre>
+        <pre><code class="lang-sql">-- pluck(:title)
+SELECT events.title FROM events WHERE capacity &gt;= 30;
+-- select(:id, :title)
+SELECT events.id, events.title FROM events WHERE capacity &gt;= 30;</code></pre>
+        <p>SQLはほぼ同じでも、<strong>pluckはオブジェクト化のコストを飛ばすので、値だけ欲しい大量データで速い</strong>（IDの配列が欲しいときの定番）。逆に、その値でメソッドを呼ぶならselectでオブジェクトが要る。</p>
+        <p><strong><code>exists?</code> — 「あるか？」に<code>COUNT</code>を使うな。</strong> 存在確認に<code>event.registrations.count &gt; 0</code>や<code>.any?</code>（ロード後）を使うと全件を数える／読むが、<code>exists?</code>は<strong>1行見つけた時点で打ち切る</strong>SQLになる。</p>
+        <pre><code class="lang-ruby">event.registrations.where(status: 'confirmed').exists?</code></pre>
+        <pre><code class="lang-sql">SELECT 1 AS one FROM registrations
+WHERE event_id = 42 AND status = 'confirmed' LIMIT 1;   -- 1件見つけたら即終了</code></pre>
+        <p><strong><code>find_each</code> — 大量行を「バッチで」回す。</strong> <code>User.all.each</code>は<strong>全ユーザーを一度にメモリに載せて</strong>から回す。100万件ならメモリが吹き飛ぶ。<code>find_each</code>は内部で<strong>主キー順に1000件ずつ（batch_size）分割取得</strong>し、少ないメモリで回す。</p>
+        <pre><code class="lang-ruby">User.find_each(batch_size: 1000) { |u| ... }</code></pre>
+        <pre><code class="lang-sql">SELECT * FROM users ORDER BY id ASC LIMIT 1000;
+SELECT * FROM users WHERE id &gt; 1000 ORDER BY id ASC LIMIT 1000;   -- 前バッチの最終idから続ける
+-- … 尽きるまで繰り返す</code></pre>
+        <p><a href="#ch4">第4章</a>のミュータビリティやメモリの話、<a href="#ch14">第14章</a>のヒープの話が、ここで「ARの取り方一つでプロセスのメモリが決まる」という実務に着地する。<strong>ARのメソッド選びは、SQLの形とメモリの使い方を同時に選んでいる</strong>——この解像度を持てれば、ORMはもう魔法ではなく、読める道具になる。次章では、これらのモデルが乗る<strong>スキーマそのものを、制約とマイグレーションでどう設計するか</strong>へ進む。</p>
+
+        <div class="check-wrap"><h3>理解度チェック</h3>
+          <details class="check"><summary>Q1. <code>preload</code>・<code>eager_load</code>・<code>includes</code>が発行するSQLはどう違うか。<code>includes</code>で<code>references</code>が要ると言われるのはなぜ？</summary><p><code>preload</code>は関連を別クエリ＋<code>WHERE id IN (...)</code>で取り常に複数本。<code>eager_load</code>は<code>LEFT OUTER JOIN</code>で1本にまとめる。<code>includes</code>は既定でpreload（別クエリ）だが、その関連を<code>where</code>や<code>order</code>の条件に使うとJOINが必要になり自動でeager_loadに切り替わる。この切替のためにARへ「この関連をJOINする」と伝える必要があり、<code>references(:xxx)</code>を添えないとエラーになる。挙動を確実にしたければpreload/eager_loadを名指しする。</p></details>
+          <details class="check"><summary>Q2. <code>counter_cache</code>は何を発行し、どんなトレードオフを持つか。第17章のどの概念の実例か？</summary><p>子（registration）のINSERT/DELETEと同じトランザクションで<code>UPDATE events SET registrations_count = registrations_count ± 1</code>を撃ち、件数を冗長カラムに固める。読みからCOUNTクエリを消せる代わりに、事実（行数）と導出値（カラム）が二重化しズレうる（reset_countersで修復）。さらに同一イベントへの同時申込でそのevents行更新のロック競合が起きうる。第17章「集計値のキャッシュ＝読み最適化のための意図的な非正規化」の実例で、整合性維持の責任を自分で引き受ける取引。</p></details>
+          <details class="check"><summary>Q3. <code>pluck</code>と<code>select</code>、<code>each</code>と<code>find_each</code>はそれぞれ何が違うか？</summary><p><code>pluck</code>はARオブジェクトを作らず値の配列を直接返す（軽い、IDや値だけ欲しいとき）。<code>select</code>は絞った列を持つARインスタンスを返す（その後メソッドを呼べる）。SQLはほぼ同じでもオブジェクト化コストが違う。<code>each</code>（<code>all.each</code>）は全行を一度にメモリへ載せてから回すので大量データでメモリが枯渇する。<code>find_each</code>は主キー順にbatch_size件ずつ分割取得して少メモリで回す（<code>WHERE id &gt; 前回最終id LIMIT n</code>を繰り返す）。存在確認は全件を数える<code>count &gt; 0</code>でなく<code>LIMIT 1</code>で打ち切る<code>exists?</code>を使う。</p></details>
+        </div>
       </section>
 
       <section class="chapter" id="ch22">
