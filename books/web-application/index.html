@@ -1228,7 +1228,127 @@ CREATE TABLE registrations (
       <section class="chapter" id="ch16">
         <h2>第16章　生SQLをちゃんと書く</h2>
         <div class="chap-hole"><span class="label">この章で埋まる穴</span>SELECTの<strong>評価順序</strong>（FROM→WHERE→GROUP BY→HAVING→SELECT→ORDER BY）、JOINの種類、GROUP BY、サブクエリ、ウィンドウ関数入門。ActiveRecordに頼らず、意図したSQLを自分で書き下せるようになります。</div>
-        <p class="placeholder">（執筆予定）</p>
+
+        <p>前章でZephyrをテーブルに分解した。分解した以上、読むときは<strong>結合して組み立て直す</strong>必要がある——それがSQLだ。ActiveRecordを使っていると<code>Event.where(...).joins(:registrations)</code>のように書けてしまうので、その下でどんなSQLが走っているかを意識せずに済む。だがN+1（<a href="#ch20">第20章</a>）を潰すにも、遅いクエリを直すにも、<strong>生のSQLを読み書きできる</strong>ことが前提になる。この章では、多くの人が誤解している<strong>SELECTの評価順序</strong>を軸に、JOIN・GROUP BY・サブクエリ・ウィンドウ関数を、Zephyrの具体的な問い——「各イベントの参加確定人数」「平均レビュー点」——で書き下せるようにする。方言はPostgreSQLを基本にする。</p>
+
+        <h3>SELECTは「書いた順」に実行されない</h3>
+        <p>SQL初学者の最大のつまずきはこれだ。<code>SELECT</code>から書き始めるのに、<strong>データベースは<code>SELECT</code>を最初に評価しない</strong>。論理的な評価順序はこうだ。</p>
+        <div class="figure">
+          <pre><code class="lang-sql">-- 書く順序
+SELECT   ...      -- (5)
+FROM     ...      -- (1)
+WHERE    ...      -- (2)
+GROUP BY ...      -- (3)
+HAVING   ...      -- (4)
+ORDER BY ...      -- (6)
+LIMIT    ...      -- (7)</code></pre>
+          <div class="cap">丸数字が論理的な評価順序。FROM→WHERE→GROUP BY→HAVING→SELECT→ORDER BY→LIMIT</div>
+        </div>
+        <p>つまり、<strong>まず<code>FROM</code>でどの集合を扱うかが決まり、<code>WHERE</code>で行を絞り、<code>GROUP BY</code>でまとめ、<code>HAVING</code>でまとめた結果を絞り、そこで初めて<code>SELECT</code>で列を選び出す</strong>。<code>ORDER BY</code>と<code>LIMIT</code>は最後だ。この順序を知っていると、初学者を悩ませる「なぜこれがエラーになるのか」がすべて説明できる。</p>
+        <ul>
+          <li><strong><code>SELECT</code>で付けた別名（エイリアス）を<code>WHERE</code>で使えない</strong>：<code>WHERE</code>(2)は<code>SELECT</code>(5)より先に評価されるので、その時点で別名はまだ存在しない。</li>
+          <li><strong><code>WHERE</code>に集約関数（<code>COUNT</code>など）を書けない</strong>：集約は<code>GROUP BY</code>(3)で作られるので、<code>WHERE</code>(2)の時点ではまだ集約されていない。集約後の絞り込みは<code>HAVING</code>(4)の仕事だ。</li>
+          <li><strong><code>ORDER BY</code>では<code>SELECT</code>の別名を使える</strong>：<code>ORDER BY</code>(6)は<code>SELECT</code>(5)の後なので、別名が見えている。</li>
+        </ul>
+        <p>「<code>WHERE</code>は個々の行に対する条件、<code>HAVING</code>はグループに対する条件」という定番の区別も、要は<strong>集約の前か後か</strong>という評価順序の話にすぎない。順序さえ頭に入れば丸暗記は要らない。</p>
+        <aside class="mongo-note"><span class="tag">MongoDB脳の翻訳</span>
+        この評価順序は、実はMongoDBのAggregation Pipelineを触ったことがあれば馴染みがある。<code>$match</code>（＝WHERE）→<code>$group</code>（＝GROUP BY）→<code>$match</code>（＝HAVING）→<code>$project</code>（＝SELECT）→<code>$sort</code>（＝ORDER BY）→<code>$limit</code>という<strong>ステージの並び</strong>が、SQLの論理評価順序とほぼ同じだ。違うのは、パイプラインが「順序を明示的に書き下す」のに対し、SQLは順序を<strong>キーワードの位置で暗黙に固定している</strong>点。SQLの<code>SELECT</code>が先頭にあるのは人間が読みやすいからで、実行順とは別物——これを掴めば両者は地続きだ。</aside>
+
+        <h3>JOINの種類 — 集合をどう突き合わせるか</h3>
+        <p><code>FROM</code>で複数のテーブルを扱うとき、行同士をどう対応づけるかがJOINだ。Zephyrで「イベントと、その主催者の名前」を並べたい。</p>
+        <pre><code class="lang-sql">SELECT e.title, u.name AS organizer
+FROM events AS e
+INNER JOIN users AS u ON u.id = e.organizer_id;</code></pre>
+        <p>種類の違いは<strong>「対応する相手がいなかった行をどう扱うか」</strong>の一点に尽きる。</p>
+        <div class="scroll-x"><table>
+          <thead><tr><th>JOIN</th><th>意味</th><th>Zephyrでの例</th></tr></thead>
+          <tbody>
+            <tr><td><strong>INNER JOIN</strong></td><td>両方に対応がある行だけ残す</td><td>申込のある users だけ（申込ゼロの人は消える）</td></tr>
+            <tr><td><strong>LEFT (OUTER) JOIN</strong></td><td>左を全部残し、右が無ければNULLで埋める</td><td>全イベントを出し、申込ゼロのイベントも残す</td></tr>
+            <tr><td><strong>RIGHT JOIN</strong></td><td>LEFTの左右逆。実務では左右を入れ替えLEFTで書くことが多い</td><td>—</td></tr>
+            <tr><td><strong>FULL OUTER JOIN</strong></td><td>両方を全部残し、対応が無い側をNULL</td><td>まれ。突合・差分検出など</td></tr>
+            <tr><td><strong>CROSS JOIN</strong></td><td>全組み合わせ（直積）。ONなし</td><td>ほぼ使わない。事故で起きると爆発</td></tr>
+          </tbody>
+        </table></div>
+        <p>実務で圧倒的に使うのは<strong>INNERとLEFT</strong>だ。ここで<a href="#ch15">第15章</a>で分けた代償——「埋め込みなら1回で取れた主催者名を、分けたのでJOINで取ってくる」——が具体的な形で現れる。分解のコストは、この一行のJOINとして支払われている。</p>
+        <p>注意すべき典型的な罠がある。「イベントごとの<strong>確定</strong>参加者数」を出したいとき、絞り込み条件を<code>WHERE</code>に書くか<code>ON</code>に書くかで、LEFT JOINの結果が変わる。</p>
+        <pre><code class="lang-sql">-- 危険: WHEREに書くと、申込ゼロのイベントが消える（実質INNER化）
+SELECT e.title, COUNT(r.id)
+FROM events AS e
+LEFT JOIN registrations AS r ON r.event_id = e.id
+WHERE r.status = 'confirmed'   -- NULL行がここで落ちる
+GROUP BY e.title;
+
+-- 正しい: 結合条件はONへ。全イベントが残る
+SELECT e.title, COUNT(r.id) AS confirmed_count
+FROM events AS e
+LEFT JOIN registrations AS r
+  ON r.event_id = e.id AND r.status = 'confirmed'
+GROUP BY e.title;</code></pre>
+        <p>評価順序を思い出せば理由は明らかだ。<code>ON</code>はJOINの最中に効き、<code>WHERE</code>はJOIN後の全行に効く。LEFT JOINで右がNULLになった行に対して<code>WHERE r.status = 'confirmed'</code>を課すと、NULLは条件を満たさず<strong>脱落し、せっかくのLEFTがINNERに退化する</strong>。「申込ゼロも0件として出したい」なら条件は<code>ON</code>側だ。</p>
+
+        <h3>GROUP BY と集約 — 行を潰してまとめる</h3>
+        <p>「各イベントの平均レビュー点」を求める。これは<code>reviews</code>を<code>event_id</code>でまとめ、<code>rating</code>を平均する仕事だ。</p>
+        <pre><code class="lang-sql">SELECT e.title,
+       COUNT(rv.id)        AS review_count,
+       ROUND(AVG(rv.rating), 2) AS avg_rating
+FROM events AS e
+LEFT JOIN reviews AS rv ON rv.event_id = e.id
+GROUP BY e.id, e.title
+HAVING COUNT(rv.id) &gt;= 3        -- レビューが3件以上のイベントだけ
+ORDER BY avg_rating DESC NULLS LAST;</code></pre>
+        <p>ポイントは二つ。<strong>(1)<code>GROUP BY</code>したら、<code>SELECT</code>に書ける列は「グループのキー」か「集約関数」だけ</strong>になる。<code>rv.body</code>のような素の列を書くとエラーだ——一グループに複数値があってどれを出すか決まらないから。<strong>(2)集約結果での絞り込みは<code>HAVING</code></strong>。「レビュー3件以上」は集約後の条件なので<code>WHERE</code>には書けない。ここでも評価順序がそのまま効いている。</p>
+
+        <h3>サブクエリ — クエリの中のクエリ</h3>
+        <p>サブクエリには使い所で三つの顔がある。</p>
+        <ul>
+          <li><strong>スカラサブクエリ</strong>（1値を返す）：<code>SELECT</code>や<code>WHERE</code>に埋める。「平均定員より大きいイベント」など。</li>
+          <li><strong>IN / EXISTS</strong>（存在判定）：「一度でも確定申込があったユーザー」など。</li>
+          <li><strong>派生テーブル / CTE</strong>（表を返す）：<code>FROM</code>に置く一時的な集合。読みやすさの要。</li>
+        </ul>
+        <pre><code class="lang-sql">-- 定員が全イベントの平均定員を上回るイベント
+SELECT title, capacity
+FROM events
+WHERE capacity &gt; (SELECT AVG(capacity) FROM events);
+
+-- 一度でも確定申込をしたユーザー（相関サブクエリ / EXISTS）
+SELECT u.name
+FROM users AS u
+WHERE EXISTS (
+  SELECT 1 FROM registrations AS r
+  WHERE r.user_id = u.id AND r.status = 'confirmed'
+);</code></pre>
+        <p>ここで<strong>相関サブクエリ</strong>という言葉に注意。上の<code>EXISTS</code>の中は外側の<code>u.id</code>を参照している——つまり<strong>外側の一行ごとに内側が評価される</strong>。件数が多いと効きにくいことがあり、しばしばJOINに書き換えられる。この「一行ごとに追加クエリ」という構図は、<a href="#ch20">第20章</a>のN+1問題とまったく同じ形をしている。頭の片隅に置いておいてほしい。</p>
+        <p>複雑なクエリは<strong>CTE（<code>WITH</code>句）</strong>で段階に分けると劇的に読みやすくなる。</p>
+        <pre><code class="lang-sql">WITH confirmed AS (
+  SELECT event_id, COUNT(*) AS cnt
+  FROM registrations
+  WHERE status = 'confirmed'
+  GROUP BY event_id
+)
+SELECT e.title, COALESCE(c.cnt, 0) AS confirmed_count
+FROM events AS e
+LEFT JOIN confirmed AS c ON c.event_id = e.id
+ORDER BY confirmed_count DESC;</code></pre>
+
+        <h3>ウィンドウ関数 — 集約せずに「隣を見る」</h3>
+        <p>最後に一段上の道具を入り口だけ。<code>GROUP BY</code>は行を<strong>潰して</strong>まとめるが、ウィンドウ関数は<strong>行を潰さずに、各行から「仲間のグループ」を見渡した計算</strong>を付け足す。「各イベント内で、レビュー点が高い順の順位」を、レビュー一件ごとの行を残したまま付けたい——これはGROUP BYでは書けない。</p>
+        <pre><code class="lang-sql">SELECT
+  event_id,
+  user_id,
+  rating,
+  RANK() OVER (PARTITION BY event_id ORDER BY rating DESC) AS rank_in_event,
+  AVG(rating) OVER (PARTITION BY event_id) AS event_avg
+FROM reviews;</code></pre>
+        <p><code>OVER (PARTITION BY event_id ...)</code>が「同じイベントの行を一つの窓（ウィンドウ）とみなす」という指定だ。<code>PARTITION BY</code>はGROUP BYに似ているが、<strong>行は消えない</strong>——各行の隣に、その窓での順位や平均が並ぶ。ランキング、累計、前月比、移動平均といった「集約したいが元の行も残したい」要求はすべてウィンドウ関数の領域だ。ActiveRecordでは書きにくく、生SQL（<code>Model.find_by_sql</code>や<code>select</code>）に落とす典型でもある。深追いは本書の範囲を超えるが、<strong>「集約とは別に、行を残したまま窓越しに計算する道具がある」</strong>と知っているだけで、いつか複雑な集計に出会ったとき引き出しになる。</p>
+        <aside class="eng-note"><span class="tag">補足</span>
+        SQLを書くときは、<strong>評価順序に沿って組み立てる</strong>と迷わない。まず<code>FROM</code>／<code>JOIN</code>で「どの集合を突き合わせるか」を決め、<code>WHERE</code>で行を絞り、必要なら<code>GROUP BY</code>＋<code>HAVING</code>でまとめ、最後に<code>SELECT</code>で何を見せるか、<code>ORDER BY</code>／<code>LIMIT</code>で並べと切り出しを決める。書き出す順（SELECT先頭）ではなく、<strong>DBが考える順</strong>で設計するのがコツだ。</aside>
+
+        <div class="check-wrap"><h3>理解度チェック</h3>
+          <details class="check"><summary>Q1. SELECTの論理評価順序を挙げ、「SELECTで付けた別名をWHEREで使えない」理由を説明せよ。</summary><p>FROM→WHERE→GROUP BY→HAVING→SELECT→ORDER BY→LIMITの順。WHEREはSELECTより先に評価されるため、その時点でSELECT句の別名はまだ作られておらず参照できない。逆にORDER BYはSELECTの後なので別名を使える。集約関数をWHEREに書けず、集約後の絞り込みにHAVINGを使うのも同じ評価順序（集約はGROUP BYで作られる）から説明できる。</p></details>
+          <details class="check"><summary>Q2. LEFT JOINで絞り込み条件をWHEREに書くと何が起きるか。正しくはどこに書くか？</summary><p>LEFT JOINで右側が対応せずNULLになった行に対し、WHEREで右側テーブルの列条件（例 <code>r.status='confirmed'</code>）を課すと、NULLは条件を満たさず脱落し、LEFT JOINが実質INNER JOINに退化する（申込ゼロのイベントが消える等）。「対応が無い行も残したい」場合、その結合に関わる条件はJOINの<code>ON</code>句に書く。</p></details>
+          <details class="check"><summary>Q3. GROUP BYによる集約とウィンドウ関数の違いは何か？</summary><p>GROUP BYはグループごとに行を<strong>潰して</strong>1行にまとめる（SELECTに書けるのはキーか集約関数のみ）。ウィンドウ関数は<code>OVER(PARTITION BY ...)</code>で「窓」を指定し、行を潰さずに各行の隣にその窓での集計（順位・平均・累計など）を付け足す。「集約はしたいが元の行も残したい」要求はウィンドウ関数で書く。</p></details>
+        </div>
       </section>
 
       <section class="chapter" id="ch17">
