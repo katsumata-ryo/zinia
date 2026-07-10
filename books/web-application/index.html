@@ -1996,7 +1996,79 @@ eyJhbGciOiJIUzI1NiJ9.eyJ1c2VyX2lkIjo0MiwiZXhwIjox...}.4Xk9_signature
       <section class="chapter" id="ch24">
         <h2>第24章　認可という別問題</h2>
         <div class="chap-hole"><span class="label">この章で埋まる穴</span>認証（誰か）と認可（何を許すか）は別問題——混ぜると事故る。ポリシーベース認可（Punditのような）の設計、ロールとパーミッションの違い。Zephyrで「主催者だけがイベントを編集できる」を例に考えます。</div>
-        <p class="placeholder">（執筆予定）</p>
+
+        <p><a href="#ch23">第23章</a>の最後で予告した「別の問い」に入る。ログイン処理を通り、サーバは「この人は確かに田中さんだ」と分かった。<strong>だが、それだけでは田中さんに何をさせてよいか一つも決まっていない。</strong> 田中さんはこのイベントを編集してよいのか、他人の申込をキャンセルできるのか、管理画面に入れるのか——これらは「田中さんが本人か」とはまったく別の判断だ。この章の主張は単純で、しかし現場で最も守られていない。<strong>認証（誰か）と認可（何をしてよいか）は別問題であり、混ぜると必ず事故る。</strong> そして認可は、あちこちのコントローラに<code>if</code>で散らばりがちな判断を、<strong>いかに一箇所に集めて設計するか</strong>の問題でもある。読者がPunditで書いてきたポリシーが、なぜあの形をしているのかを下から捉え直す。</p>
+
+        <h3>認証と認可を混ぜると何が起きるか</h3>
+        <p>まず言葉を固定する。英語ではAuthentication（AuthN）とAuthorization（AuthZ）、日本語では認証と認可。似すぎていて災いのもとだが、問う内容はまるで違う。</p>
+        <div class="scroll-x"><table>
+          <thead><tr><th></th><th>認証 (Authentication)</th><th>認可 (Authorization)</th></tr></thead>
+          <tbody>
+            <tr><td>問い</td><td>あなたは<strong>誰</strong>か</td><td>あなたは<strong>これをしてよい</strong>か</td></tr>
+            <tr><td>入力</td><td>資格情報（パスワード、トークン）</td><td>「誰」＋「対象」＋「操作」</td></tr>
+            <tr><td>結果</td><td><code>current_user</code>が定まる</td><td>許可／拒否</td></tr>
+            <tr><td>いつ</td><td>ログイン時に一度</td><td><strong>操作のたびに毎回</strong></td></tr>
+          </tbody>
+        </table></div>
+        <p>ここで最悪のアンチパターンを見せる。「ログインしているならOK」——認証を認可の代わりに使う誤りだ。Zephyrのイベント編集を考える。</p>
+        <pre><code class="lang-ruby"># アンチパターン：認証で認可を代用している
+class EventsController &lt; ApplicationController
+  before_action :require_login   # ← これは「ログイン済みか」＝認証だけ
+
+  def update
+    @event = Event.find(params[:id])
+    @event.update!(event_params)  # ← 誰でも、他人のイベントでも更新できてしまう
+  end
+end</code></pre>
+        <p><code>require_login</code>が守っているのは「ログインしているか」だけだ。ログインさえしていれば、<strong>他人が主催するイベントのIDをURLに入れるだけで、田中さんが鈴木さんのイベントを書き換えられる</strong>。これは<strong>権限昇格</strong>——正確には水平方向の権限昇格と呼ばれる、実際のサービスで頻発する脆弱性だ。原因はただ一つ、<strong>「誰か」は確認したのに「このリソースに対してこの操作をしてよいか」を確認しなかった</strong>こと。認証は入口の身分証チェックにすぎず、部屋ごとの入室許可（認可）はまた別に要るのだ。</p>
+        <aside class="eng-note"><span class="tag">補足</span>
+        この種の穴は「IDが連番で推測できる」と一気に危険になる（<code>/events/41</code>を<code>/events/42</code>に変えるだけ）。OWASPが<strong>Broken Access Control（壊れたアクセス制御）</strong>をWebアプリの最重要リスク上位に置き続けているのは、こうした「認可の抜け」が最も多く、かつ被害が直接的だからだ。認可は華やかな暗号技術ではなく、地味な<code>if</code>の徹底で守られる。</aside>
+
+        <h3>認可のロジックはどこに置くべきか</h3>
+        <p>では正しくやろう、と<code>update</code>の中に<code>if @event.organizer_id == current_user.id</code>を書く。一箇所ならそれでいい。だが認可判断は<code>edit</code>にも<code>destroy</code>にも要る。イベント一覧では「編集ボタンを出すか」でも同じ判断が要る。APIエンドポイントでも要る。<strong>同じ「主催者だけが編集してよい」というルールが、アプリ中に<code>if</code>となって散らばっていく。</strong> やがてルールが変わる（「主催者に加えて管理者も編集可」）と、散らばった<code>if</code>を全部見つけて直さねばならず、必ず一つ漏れる。その漏れが穴になる。</p>
+        <p>ここに認可設計の核心がある。<strong>「誰がどの操作をしてよいか」という判断を、コントローラやビューから引き剥がし、一箇所（ポリシー）に集約する。</strong> これが<strong>ポリシーベース認可</strong>だ。読者が使ってきたPunditは、まさにこの「集約」を型にしたものにほかならない。</p>
+        <pre><code class="lang-ruby"># ポリシー：認可判断を「リソース × ユーザー」の一箇所に集約する
+class EventPolicy
+  attr_reader :user, :event
+  def initialize(user, event)
+    @user  = user
+    @event = event
+  end
+
+  # 「主催者、または管理者なら編集してよい」——ルールはここだけに書く
+  def update?
+    event.organizer_id == user.id || user.admin?
+  end
+  alias edit? update?
+  def destroy? = update?
+end</code></pre>
+        <pre><code class="lang-ruby"># コントローラは「判断」をせず「問い合わせ」るだけになる
+def update
+  @event = Event.find(params[:id])
+  authorize @event          # EventPolicy#update? を呼び、falseなら例外で弾く
+  @event.update!(event_params)
+end</code></pre>
+        <p>この形の効き目は「重複が消える」ことだけではない。<strong>認可のルールが一箇所にまとまることで、「このアプリの権限設計はどうなっているか」がポリシーを読むだけで分かる</strong>ようになる。散らばった<code>if</code>は仕様書にならないが、ポリシー群はそのまま権限仕様書になる。ビューでも同じポリシーを<code>policy(@event).update?</code>で呼べば、「編集ボタンの表示条件」と「実際の編集可否」が<strong>絶対にずれない</strong>——判断の出どころが一つだからだ。ボタンは出るのに押すと拒否される、あるいはその逆、という古典的なバグが原理的に起きなくなる。</p>
+        <aside class="eng-note"><span class="tag">補足</span>
+        集約には副作用として「認可が漏れる箇所」を検出しやすくなる利点もある。Punditの<code>after_action :verify_authorized</code>は「このアクションで<code>authorize</code>を呼び忘れていないか」を実行時に検査する。認可を各所の<code>if</code>で書いていると「書き忘れ」を機械的に検出できないが、集約して規約に乗せると<strong>「認可し忘れたら落ちる」という安全網</strong>を張れる。設計を型にすることは、抜けを検出可能にすることでもある。</aside>
+
+        <h3>ロールとパーミッション、そしてリソース単位の認可</h3>
+        <p>認可の設計には二つの軸があり、混同されやすい。<strong>ロールベース（RBAC）</strong>と<strong>リソース単位（所有ベース）</strong>だ。</p>
+        <p><strong>ロール</strong>は「その人が何者か」に紐づく大分類の権限だ——管理者・一般ユーザー・ゲスト。<code>user.admin?</code>で判断できる、リソースに依存しない権限である。一方Zephyrの「<strong>主催者だけがそのイベントを編集できる</strong>」は、ロールでは表せない。田中さんは「イベントAの主催者」だが「イベントBの主催者ではない」。<strong>同じユーザーでも、対象リソースによって可否が変わる</strong>。これがリソース単位（所有ベース）の認可で、判断には必ず「ユーザー」と「対象リソース」の<strong>両方</strong>が要る。だからPunditのポリシーが<code>initialize(user, event)</code>と<strong>二つ</strong>を受け取るのは偶然ではない。<strong>認可とは本質的に「ユーザー×リソース×操作」の三つ組に対する可否判断だ</strong>——このモデルが頭に入ると、ポリシーの形が必然に見えてくる。</p>
+        <p>ここで<strong>ロールとパーミッションを混同しない</strong>ことが効いてくる。素朴な設計は「管理者ロールならこれもあれもできる」とロールに操作を直接ぶら下げる。だが「編集はできるが削除はできない準管理者が欲しい」となった瞬間に破綻する。堅い設計は<strong>ロールとパーミッション（個々の操作許可）を分離</strong>し、「ロールはパーミッションの束にすぎない」と捉える。ポリシーのメソッドは常に<strong>パーミッション（<code>update?</code>という操作単位）</strong>で書き、その中でロール（<code>user.admin?</code>）や所有（<code>organizer_id == user.id</code>）を<strong>参照する</strong>——判断の単位はあくまで操作であって、ロールではない。</p>
+        <aside class="mongo-note"><span class="tag">MongoDB脳の翻訳</span>
+        所有ベースの認可（<code>organizer_id == user.id</code>）は、<a href="#ch22">第22章</a>で見た<strong>外部キーが指す関係</strong>に乗っている。<code>events.organizer_id</code>が<code>users.id</code>を正しく指しているという整合性（FK制約で守った関係）が、そのまま「誰がこのイベントの持ち主か」という認可の根拠になる。<strong>データモデルの関係設計と認可設計は地続き</strong>だ。埋め込み中心のドキュメント設計に慣れていると「所有者名をイベントに文字列で持たせる」ような非正規化をしがちだが、認可の根拠にするなら<strong>ID参照（正規化された関係）で持つ</strong>方が正しい。所有者が変わったときに、名前のコピーではなくID一つの付け替えで認可が追随するからだ。<a href="#ch17">第17章</a>の正規化の話が、ここで「認可を壊さないためのデータ設計」として返ってくる。</aside>
+
+        <h3>認可は一箇所で判断し、多層で守る</h3>
+        <p>最後に、認可の「置き場所」をもう一段引いて見る。ポリシーで判断を集約するのは<strong>ロジックの一元化</strong>の話だが、それとは別に<strong>「どの層で弾くか」</strong>という多層防御の視点がある。理想は「認可ロジックは一箇所に集約しつつ、その判断を複数の層（コントローラ・モデルのスコープ・必要ならDB）で確実に効かせる」ことだ。</p>
+        <p>特に見落とされがちなのが<strong>一覧の絞り込み</strong>だ。個別の<code>update?</code>を守っても、一覧で「自分が見てよいイベントだけ」を返す絞り込みを忘れると、他人の非公開イベントが一覧に漏れる。Punditの<code>Scope</code>が「ポリシーと同じ場所でクエリの絞り込みも定義する」形になっているのは、<strong>「見せてよいか」の判断も「操作してよいか」と同じ認可の一部だ</strong>という思想の表れだ。<a href="#ch16">第16章</a>のSQLで言えば、認可は<code>WHERE organizer_id = ?</code>という条件として、データ取得そのものに織り込まれる。</p>
+        <p>認証で「誰か」を、認可で「何をしてよいか」を固めた。だが、たとえ正しい人が正しい操作をしても、<strong>その画面やレスポンスをどれだけ使い回してよいか</strong>——つまり性能のために結果を保存（キャッシュ）してよいか——は、また別の判断だ。そして認可とキャッシュは危険な形で絡む。「田中さん向けに絞り込んだ一覧」を鈴木さんにうっかり見せてしまう事故は、キャッシュの取り扱いを誤ると起きる。<a href="#ch25">第25章</a>では、その<strong>キャッシュの階層</strong>を——認可と混ざると何が危ういかも含めて——下から見ていく。</p>
+
+        <div class="check-wrap"><h3>理解度チェック</h3>
+          <details class="check"><summary>Q1. 「ログインしていればOK」で認可を済ませると、なぜ・どんな事故が起きるか。Zephyrのイベント編集で説明せよ。</summary><p><code>require_login</code>が確認するのは「ログイン済みか」＝認証だけで、「このリソースにこの操作をしてよいか」＝認可を確認していない。そのため田中さんがログインしてさえいれば、URLのIDを他人のイベントに差し替えるだけで鈴木さんのイベントを更新できてしまう（水平方向の権限昇格＝Broken Access Control）。認証は入口の身分証チェックにすぎず、リソースごとの操作許可は別に確認せねばならない。正しくは<code>update</code>等で<code>organizer_id == current_user.id</code>（または管理者）を毎回チェックする。認可は操作のたびに必要で、認証の一度きりとは別物。</p></details>
+          <details class="check"><summary>Q2. 認可判断をコントローラやビューに<code>if</code>で散らさず、ポリシーに集約する利点は？</summary><p>同じルール（例：主催者だけ編集可）は<code>edit</code>/<code>update</code>/<code>destroy</code>/一覧のボタン表示/API等に何度も要り、<code>if</code>で散らすと重複し、仕様変更（管理者も編集可に）で必ず修正漏れ＝穴が出る。ポリシー（例：<code>EventPolicy#update?</code>）に集約すると、(1)ルールが一箇所で重複が消え、(2)ポリシー群がそのまま権限仕様書になり、(3)ビューとコントローラが同じ判断を呼ぶのでボタン表示と実行可否が絶対にずれず、(4)<code>verify_authorized</code>のような仕組みで「認可し忘れ」を機械的に検出できる。設計を型にすることで抜けを検出可能にできる。</p></details>
+          <details class="check"><summary>Q3. ロールベースの権限と、所有ベース（リソース単位）の認可はどう違い、なぜポリシーは<code>(user, resource)</code>の両方を取るのか？</summary><p>ロール（管理者・一般等）は「その人が何者か」に紐づきリソースに依存しない権限（<code>user.admin?</code>で判断可）。一方「主催者だけがそのイベントを編集可」は所有ベースで、同じ田中さんでも対象イベントによって可否が変わる（Aの主催者だがBは違う）。つまり判断には「ユーザー」と「対象リソース」の両方が要り、認可は本質的に「ユーザー×リソース×操作」の三つ組への可否判断。だからポリシーは<code>initialize(user, event)</code>と二つを受け取る。設計上はロールとパーミッション（操作単位の許可）を分離し、ポリシーのメソッドは操作単位（<code>update?</code>）で書き、その中でロールや所有を参照する。所有の根拠となる<code>organizer_id</code>はID参照（正規化）で持つのが、所有者変更に認可が追随する正しい形。</p></details>
+        </div>
       </section>
 
       <section class="chapter" id="ch25">
