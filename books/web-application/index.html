@@ -1530,7 +1530,93 @@ SELECT status FROM registrations WHERE event_id = 42;
       <section class="chapter" id="ch19">
         <h2>第19章　トランザクションと分離レベル</h2>
         <div class="chap-hole"><span class="label">この章で埋まる穴</span>ACID、ロック、分離レベル（Read Committed / Repeatable Read など）、デッドロック。MongoDBが長くドキュメント単位の原子性で戦ってきた事情と、RDBのマルチ行トランザクションの前提の違いを対比します。</div>
-        <p class="placeholder">（執筆予定）</p>
+
+        <p>ここまでの4章（<a href="#ch15">第15章</a>〜<a href="#ch18">第18章</a>）は、テーブル・SQL・正規化・インデックスという<strong>静的な構造</strong>の話だった。だが本番のDBは、静止していない。<strong>何人ものユーザーのリクエストが、同じ行を、同じ瞬間に読み書きしにくる。</strong> Zephyrで言えば「定員30名のイベントに、31人目と32人目が<em>同時に</em>申し込みボタンを押す」ような場面だ。このとき、素朴に「今の申込数を数えて、30未満なら1件INSERT」というコードを書くと、<strong>両方が『今29人だ、まだ入れる』と読んでしまい、定員31人になる</strong>。この章は、複数の処理が同じデータを奪い合うときにDBが何を保証してくれて、何は自分で守らねばならないかを、ACID・ロック・分離レベル・デッドロックという言葉で解体する。<strong>本書の読者にとって、ここは最も感覚を入れ替える必要のある章だ</strong>——MongoDBが長く「単一ドキュメントの原子性」だけで戦ってきた世界から来た人は、RDBが「複数行にまたがる一貫性」を最初から前提にしていることに、まず驚くはずだ。</p>
+
+        <h3>トランザクションとは「全部やるか、全部やらないか」</h3>
+        <p>トランザクションの出発点は、<a href="#ch4">第4章</a>で金額計算を扱ったときの緊張感に近い。<strong>途中で中断されては困る一連の操作</strong>を、ひとまとめの「不可分な単位」として扱いたい。古典的な例は口座振替だ。「Aから1万円引く」「Bに1万円足す」——この二つは<strong>両方成功するか、両方なかったことになるか</strong>のどちらかでなければならない。片方だけ成功して落ちたら、1万円がこの世から消える。</p>
+        <pre><code class="lang-sql">BEGIN;                                        -- トランザクション開始
+  UPDATE accounts SET balance = balance - 10000 WHERE id = 'A';
+  UPDATE accounts SET balance = balance + 10000 WHERE id = 'B';
+COMMIT;                                        -- ここで初めて確定。落ちたら ROLLBACK で全部なかったことに</code></pre>
+        <p><code>BEGIN</code>から<code>COMMIT</code>までの間に何が起きても——アプリが例外を投げても、サーバのプロセスが落ちても——DBは<strong>「COMMITされていない変更は無かったことにする（ROLLBACK）」</strong>を保証する。中途半端な状態が永続化されることは、原理的にない。Railsでは<code>ActiveRecord::Base.transaction do ... end</code>のブロックがこれで、ブロック内で例外が上がれば自動的にROLLBACKされる。</p>
+
+        <h3>ACID — トランザクションが約束する4つの性質</h3>
+        <p>この「不可分な単位」が満たすべき性質を4文字で表したのがACIDだ。暗記用の頭字語というより、<strong>それぞれが別の壊れ方を防いでいる</strong>と捉えるとよい。</p>
+        <div class="scroll-x"><table>
+          <thead><tr><th>性質</th><th>意味</th><th>防いでいる壊れ方</th></tr></thead>
+          <tbody>
+            <tr><td><strong>A</strong>tomicity（原子性）</td><td>全部やるか、全部やらないか</td><td>振替の片方だけ成功して1万円が消える</td></tr>
+            <tr><td><strong>C</strong>onsistency（一貫性）</td><td>制約を満たした状態から満たした状態へだけ遷移する</td><td>外部キーやCHECKを破る中間状態が残る（<a href="#ch22">第22章</a>）</td></tr>
+            <tr><td><strong>I</strong>solation（分離性）</td><td>同時実行しても、あたかも順番に実行したかのように見える</td><td>他人の未確定の変更が見えて判断を誤る</td></tr>
+            <tr><td><strong>D</strong>urability（永続性）</td><td>COMMITした変更は電源が落ちても消えない</td><td>「保存した」と返したのにディスクに届いていない</td></tr>
+          </tbody>
+        </table></div>
+        <p>この章で深掘りするのは主に<strong>I（分離性）</strong>だ。A・C・Dは「そういうものだ」で受け入れやすいが、Iだけは<strong>程度の問題</strong>で、しかも<strong>性能とのトレードオフとして自分で選ぶ</strong>設定項目になっているからだ。Durabilityの裏側（WALログにまず書いてからデータ本体へ、という仕組み）は面白いテーマだが、実務でつまむ頻度が高いのは圧倒的に分離性なので、そちらへ進む。</p>
+
+        <h3>分離レベル — 「どこまで他人を見せるか」の4段階</h3>
+        <p>複数のトランザクションが同時に走るとき、<strong>あるトランザクションから、まだCOMMITされていない/されたばかりの他者の変更が、どこまで見えるか</strong>。これを厳しくするほど整合性は上がるが、ロックや待ちが増えて遅くなる。SQL標準はこの緩さを4段階に分け、各段階で「どの異常（アノマリー）が起こりうるか」を定義している。</p>
+        <div class="scroll-x"><table>
+          <thead><tr><th>分離レベル</th><th>Dirty Read</th><th>Non-repeatable Read</th><th>Phantom Read</th></tr></thead>
+          <tbody>
+            <tr><td>Read Uncommitted</td><td>起こる</td><td>起こる</td><td>起こる</td></tr>
+            <tr><td>Read Committed</td><td>防ぐ</td><td>起こる</td><td>起こる</td></tr>
+            <tr><td>Repeatable Read</td><td>防ぐ</td><td>防ぐ</td><td>起こる（※）</td></tr>
+            <tr><td>Serializable</td><td>防ぐ</td><td>防ぐ</td><td>防ぐ</td></tr>
+          </tbody>
+        </table></div>
+        <p>三つのアノマリーを、Zephyrの文脈で具体化する。</p>
+        <ul>
+          <li><strong>Dirty Read（ダーティリード）</strong>：他のトランザクションが<strong>まだCOMMITしていない</strong>変更を読んでしまう。相手がその後ROLLBACKしたら、あなたは「存在しなかった値」を元に判断したことになる。「申込を入れたが確定前」の幽霊データを人数に数えてしまう類だ。実用DBのほとんどはこれを最初から許さない。</li>
+          <li><strong>Non-repeatable Read（反復不能読み取り）</strong>：同じトランザクション内で<strong>同じ行を二度読んだら、値が変わっていた</strong>（間に他者がCOMMITしたため）。「イベントの残席を最初に読んだときは5、集計処理の後半でもう一度読んだら3」のように、1つの処理の中で前提が揺らぐ。</li>
+          <li><strong>Phantom Read（ファントムリード）</strong>：同じ条件で<strong>行の集合を二度数えたら、行数が変わっていた</strong>（間に他者が条件に合う行をINSERTした）。「<code>WHERE event_id=42</code>の申込が最初は29件、直後にもう一度数えたら31件」——増えた2行が“幽霊”だ。定員チェックが破れる典型がこれ。</li>
+        </ul>
+        <aside class="eng-note"><span class="tag">補足</span>
+        表の<strong>（※）</strong>について。SQL標準の定義ではRepeatable Readはphantomを許すが、<strong>PostgreSQLのRepeatable Read（実装はスナップショット分離＝MVCC）はphantomまで実質的に防ぐ</strong>。一方MySQL(InnoDB)のRepeatable Readはギャップロックで多くのphantomを抑えるが挙動が異なる。<strong>「分離レベルの名前は同じでも、DBによって実際の保証は違う」</strong>——これは移植性の落とし穴で、名前を信じず各DBのドキュメントで実挙動を確かめるのが鉄則だ。多くのRDBの既定は<strong>Read Committed</strong>（PostgreSQL・Oracle）だが、MySQLの既定はRepeatable Readと、既定すら揃っていない。</aside>
+
+        <h3>MVCC — 「読みは書きをブロックしない」仕掛け</h3>
+        <p>ここで素朴な疑問が湧く。分離性を守るなら、誰かが行を書き換えている間は他の全員がその行を読めないよう<strong>ロックすればいい</strong>のでは？ 実際、古い設計はそうしていた。だが読みのたびにロック待ちが発生しては、Webのように読みが圧倒的に多い世界では詰まってしまう。そこで現代の主要RDB（PostgreSQL・MySQL/InnoDB・Oracle）は<strong>MVCC（Multi-Version Concurrency Control、多版型同時実行制御）</strong>を採る。</p>
+        <p>発想はこうだ。行を<strong>上書きせず、変更のたびに新しいバージョンを作る</strong>。各トランザクションは開始時点の<strong>スナップショット</strong>を見る。だから<strong>「書いている人がいても、読む人はCOMMIT前の古いバージョンを待たずに読める」</strong>。読みと書きが互いをブロックしない。これがMVCCの核心で、<code>SELECT</code>が普通は<code>UPDATE</code>を待たない理由だ。<a href="#ch2">第2章</a>のGitで「コミットは差分でなくスナップショット、同一内容は共有」という話をしたが、MVCCの複数バージョン管理はあれと似た匂いがする——<strong>状態を上書きせず版で持つと、並行アクセスが楽になる</strong>という共通の知恵だ。</p>
+
+        <h3>それでも足りない — 定員問題と明示的ロック</h3>
+        <p>MVCCで「読みは待たない」が手に入った。だが冒頭の定員問題は、実は<strong>MVCCだけでは解けない</strong>。二人が同時にトランザクションを始めると、両者とも「開始時点のスナップショット＝29件」を見て、両者とも「30未満だ、INSERTしてよい」と判断する。スナップショットが分離してくれるがゆえに、<strong>互いの申込が見えないまま両方成功する</strong>。これがまさにphantomの実害だ。対処は主に二つ。</p>
+        <p><strong>(1) 行を明示的にロックする（悲観ロック）。</strong> 「これから更新するから、他の人は待て」と宣言する。PostgreSQL/MySQLの<code>SELECT ... FOR UPDATE</code>だ。</p>
+        <pre><code class="lang-sql">BEGIN;
+  -- イベント42の行に排他ロックをかける。他のトランザクションはこの行のFOR UPDATEで待たされる
+  SELECT capacity FROM events WHERE id = 42 FOR UPDATE;
+  -- 確定数を数える（ロックで直列化されているので、他者の割り込みがない）
+  SELECT count(*) FROM registrations WHERE event_id = 42 AND status = 'confirmed';
+  -- capacity 未満なら INSERT
+  INSERT INTO registrations (user_id, event_id, status) VALUES (99, 42, 'confirmed');
+COMMIT;</code></pre>
+        <p>Railsなら<code>Event.lock.find(42)</code>や<code>event.with_lock do ... end</code>がこの<code>FOR UPDATE</code>を発行する。ロックはCOMM/ROLLBACKで解放される。<strong>「イベント行を先に握った者だけが定員を数えてINSERTできる」</strong>ので、二人目は一人目のCOMMITを待ってから最新の30件を見て弾かれる。</p>
+        <p><strong>(2) 楽観ロック。</strong> ロックで待たせる代わりに、更新時に「読んだときからバージョンが変わっていないか」を確かめる。Railsの<code>lock_version</code>カラムがこれで、<code>UPDATE ... WHERE id=? AND lock_version=?</code>が0行更新なら「誰かに先を越された」と判断して<code>StaleObjectError</code>を投げる。衝突が稀なら待たせない分こちらが速い。<strong>悲観＝先に握る／楽観＝後で確かめる</strong>、衝突頻度で選ぶ。</p>
+        <aside class="eng-note"><span class="tag">補足</span>
+        定員のような一意な制約は、アプリのロジックだけでなく<strong>DBの制約でも二重に守る</strong>のが堅い。Zephyrの<code>registrations</code>には<code>UNIQUE(user_id, event_id)</code>があった（<a href="#ch15">第15章</a>）。これがあれば「同じ人が二重申込」はロックの有無に関わらずDBが弾く。分離レベルやロックで守りきれない不変条件は、<strong>最後の砦としての制約</strong>（<a href="#ch22">第22章</a>）に預けるのが定石だ。アプリ層のチェックは競合の隙間（TOCTOU）で漏れることがある、と覚えておく。</aside>
+
+        <h3>デッドロック — 循環待ちと、その避け方</h3>
+        <p>ロックを使い始めると必ず出会うのがデッドロックだ。<strong>二つのトランザクションが、相手が握っているロックを、互いに待ち合う</strong>状態をいう。</p>
+        <div class="figure">
+          <pre><code class="lang-sql">-- トランザクションT1          -- トランザクションT2
+BEGIN;                          BEGIN;
+UPDATE ... WHERE id = 1;   ←    (idを1と2で)
+                                UPDATE ... WHERE id = 2;   ← T2はid=2を握る
+UPDATE ... WHERE id = 2;   →    T1はid=2を待つ（T2が握っている）
+                                UPDATE ... WHERE id = 1;   → T2はid=1を待つ（T1が握っている）
+-- 互いに永遠に待つ = デッドロック</code></pre>
+          <div class="cap">T1は1→2の順、T2は2→1の順でロックを取りにいったため循環待ちが発生する。</div>
+        </div>
+        <p>DBはこの循環待ちを<strong>検出し、片方を犠牲（victim）に選んで強制ROLLBACK</strong>する（<code>deadlock detected</code>エラー）。永遠に固まることはないが、犠牲になった側の処理は失敗する。対策の王道は<strong>「ロックを取る順序をアプリ全体で統一する」</strong>ことだ。上の例なら、両者が必ず<code>id</code>の小さい順にロックを取ると決めれば、循環は原理的に起きない。加えて、犠牲側は再試行（<a href="#ch27">第27章</a>の冪等・リトライの話に繋がる）で救えるよう設計しておく。<strong>デッドロックは「バグ」ではなく並行システムの正常な一部</strong>——起きる前提で、順序統一とリトライで受け止める。</p>
+
+        <aside class="mongo-note"><span class="tag">MongoDB脳の翻訳</span>
+        ここが本章で最も感覚を入れ替える所だ。<strong>MongoDBは長い間、トランザクションを「単一ドキュメントの原子性」でしか提供してこなかった。</strong> 一つのドキュメントへの更新は原子的（途中状態が見えない）だが、<strong>複数のドキュメント／コレクションにまたがる「全部やるか全部やらないか」は、バージョン4.0(2018)のレプリカセット向けマルチドキュメントトランザクション、4.2でシャード対応、とかなり後から付いた</strong>。だからMongo文化では「トランザクションが要る設計は、そもそも1ドキュメントに埋め込んで回避する」のが定石だった——参加者やレビューをイベントに埋め込めば、その更新は単一ドキュメントの原子操作で済む。<br><br>
+        つまりあなたがMongoで<strong>「埋め込み」を選んでいたとき、実は無意識にトランザクションの必要性を消していた</strong>。RDBは逆で、正規化して分ける（<a href="#ch17">第17章</a>）のが既定だから、複数テーブルにまたがる整合性を<strong>トランザクションで能動的に囲う</strong>のが日常になる。「振替」「定員申込」のような複数行の不可分操作を<code>transaction do</code>で囲む習慣は、RDBでは息を吸うように行う。さらにMongoでも4.0以降トランザクションは使えるが、単一ドキュメント原子性が基本で<strong>マルチドキュメントトランザクションはコストが高く『例外的に使う』位置づけ</strong>なのに対し、RDBでは<strong>トランザクションが第一級・常用の道具</strong>だという温度差を掴んでおくとよい。分離レベルやロックの概念自体はMongoの因果整合性やread/write concernに対応物があるが、RDBほど前面には出てこない。</aside>
+
+        <div class="check-wrap"><h3>理解度チェック</h3>
+          <details class="check"><summary>Q1. ACIDのうちこの章が「程度の問題であり自分で選ぶ設定になっている」と言った性質はどれか。なぜか？</summary><p>I（Isolation、分離性）。A・C・Dは基本的に「守られるかどうか」だが、分離性だけは「どこまで他トランザクションの未確定・変更を見せるか」を分離レベル（Read Uncommitted〜Serializable）として段階で選べる。厳しくするほど整合性は上がるがロックや待ちで遅くなるため、性能とのトレードオフを自分で設定する項目になっている。多くのRDBの既定はRead Committed（MySQLはRepeatable Read）。</p></details>
+          <details class="check"><summary>Q2. 定員30名のイベントに同時申込が来て31人入ってしまう現象は、どのアノマリーで、どう防ぐか？</summary><p>Phantom Read（同じ条件で数えた行数が、間に他者がINSERTしたことで変わる）。MVCCのスナップショットだけだと二人とも開始時点の「29件」を見て両方INSERTしてしまう。防ぐには対象を明示的にロックする——<code>SELECT ... FOR UPDATE</code>（Railsの<code>with_lock</code>）でイベント行を握り、数えてINSERTするまでを直列化する（悲観ロック）。衝突が稀なら楽観ロック（lock_version）でも可。加えて<code>UNIQUE</code>制約など DB制約を最後の砦にする。</p></details>
+          <details class="check"><summary>Q3. デッドロックはなぜ起き、どう対処するか。MVCCがあっても明示ロックが要るのはなぜか？</summary><p>デッドロックは二つのトランザクションが互いの握るロックを待ち合う循環待ちで発生する。DBが検出して片方を強制ROLLBACK（victim）するので固まりはしないが、その処理は失敗する。対策はロック取得順序をアプリ全体で統一して循環を作らないこと＋犠牲側のリトライ。MVCCは「読みは書きを待たない」を実現するが、各トランザクションが分離したスナップショットを見るため、定員のような『他者の同時INSERTを踏まえた判断』はスナップショットだけでは守れず、明示ロックで直列化する必要がある。</p></details>
+        </div>
       </section>
 
       <section class="chapter" id="ch20">
