@@ -1,0 +1,1967 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>年末調整を体系的に理解する</title>
+<style>
+  :root{
+    --bg:#ffffff; --fg:#1c2126; --muted:#5c6773; --line:#e2e6ea;
+    --sidebar-bg:#f6f8fa; --accent:#1f6feb; --accent-soft:#e7f0ff;
+    --engineer-bg:#eef6ee; --engineer-border:#3f9142; --engineer-fg:#1f3a20;
+    --note-bg:#fff7e6; --note-border:#e0a12b; --note-fg:#6b4e12;
+    --check-bg:#f2f4f8; --code-bg:#f0f2f4;
+    --maxw:42em; --lh:1.8;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#0f1419; --fg:#d6dde3; --muted:#8b98a5; --line:#2a323b;
+      --sidebar-bg:#141a21; --accent:#5b9dff; --accent-soft:#16273f;
+      --engineer-bg:#132218; --engineer-border:#3f9142; --engineer-fg:#bfe3c2;
+      --note-bg:#241f12; --note-border:#c79a3a; --note-fg:#e6d3a3;
+      --check-bg:#161c23; --code-bg:#1a212a;
+    }
+  }
+  :root[data-theme="light"]{
+    --bg:#ffffff; --fg:#1c2126; --muted:#5c6773; --line:#e2e6ea;
+    --sidebar-bg:#f6f8fa; --accent:#1f6feb; --accent-soft:#e7f0ff;
+    --engineer-bg:#eef6ee; --engineer-border:#3f9142; --engineer-fg:#1f3a20;
+    --note-bg:#fff7e6; --note-border:#e0a12b; --note-fg:#6b4e12;
+    --check-bg:#f2f4f8; --code-bg:#f0f2f4;
+  }
+  :root[data-theme="dark"]{
+    --bg:#0f1419; --fg:#d6dde3; --muted:#8b98a5; --line:#2a323b;
+    --sidebar-bg:#141a21; --accent:#5b9dff; --accent-soft:#16273f;
+    --engineer-bg:#132218; --engineer-border:#3f9142; --engineer-fg:#bfe3c2;
+    --note-bg:#241f12; --note-border:#c79a3a; --note-fg:#e6d3a3;
+    --check-bg:#161c23; --code-bg:#1a212a;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0; background:var(--bg); color:var(--fg);
+    font-family:system-ui,-apple-system,"Segoe UI","Hiragino Sans","Noto Sans JP",Meiryo,sans-serif;
+    line-height:var(--lh); font-size:17px; -webkit-text-size-adjust:100%;
+  }
+  a{color:var(--accent)}
+
+  /* ---- layout ---- */
+  .layout{display:flex; min-height:100vh}
+  .sidebar{
+    width:300px; flex:0 0 300px; background:var(--sidebar-bg);
+    border-right:1px solid var(--line); position:sticky; top:0; height:100vh;
+    overflow-y:auto; padding:1rem 0.75rem 3rem;
+  }
+  .sidebar h1{font-size:1rem; margin:0.25rem 0.5rem 0.75rem; line-height:1.4}
+  .sidebar .sub{color:var(--muted); font-size:0.78rem; margin:0 0.5rem 1rem}
+  .toc{list-style:none; margin:0; padding:0; font-size:0.86rem}
+  .toc .part{font-weight:700; color:var(--muted); margin:0.9rem 0.5rem 0.3rem; font-size:0.78rem; letter-spacing:.02em}
+  .toc a{display:block; padding:0.28rem 0.5rem; border-radius:6px; text-decoration:none; color:var(--fg)}
+  .toc a:hover{background:var(--accent-soft)}
+  .toc a.active{background:var(--accent-soft); color:var(--accent); font-weight:600}
+
+  .content{flex:1 1 auto; min-width:0; padding:2rem 1.5rem 6rem; display:flex; justify-content:center}
+  .content > main{width:100%; max-width:var(--maxw)}
+
+  section.chapter{scroll-margin-top:1rem; padding-top:2.5rem; margin-top:1rem; border-top:1px solid var(--line)}
+  section.chapter:first-of-type{border-top:0}
+  section.part-cover{scroll-margin-top:1rem; padding-top:3rem}
+  .part-cover h2{font-size:1.6rem; border:0; color:var(--accent)}
+  h2{font-size:1.5rem; line-height:1.4; margin:0 0 0.6rem}
+  h3{font-size:1.15rem; margin:2rem 0 0.5rem}
+  .placeholder{color:var(--muted); font-style:italic}
+  .chap-map{background:var(--check-bg); border-left:3px solid var(--accent); padding:0.6rem 0.9rem; border-radius:0 6px 6px 0; margin:0 0 1rem; font-size:0.92rem}
+
+  /* ---- engineer column ---- */
+  aside.engineer-note{
+    background:var(--engineer-bg); border:1px solid var(--engineer-border);
+    border-left-width:5px; color:var(--engineer-fg);
+    padding:0.8rem 1rem; border-radius:6px; margin:1.2rem 0; font-size:0.95rem;
+  }
+  aside.engineer-note .tag{font-weight:700; font-size:0.78rem; display:block; margin-bottom:0.3rem; letter-spacing:.03em}
+
+  /* ---- year note ---- */
+  .year-note{
+    display:inline-block; background:var(--note-bg); border:1px solid var(--note-border);
+    color:var(--note-fg); font-size:0.78rem; padding:0.05rem 0.5rem; border-radius:999px;
+    margin:0 0.2rem; vertical-align:middle; white-space:nowrap;
+  }
+  p.year-note-block{display:block; border-radius:6px; padding:0.4rem 0.8rem; font-size:0.85rem}
+
+  /* ---- understanding check ---- */
+  details.check{
+    background:var(--check-bg); border:1px solid var(--line); border-radius:6px;
+    padding:0.6rem 0.9rem; margin:0.6rem 0;
+  }
+  details.check summary{cursor:pointer; font-weight:600}
+  details.check[open]{padding-bottom:0.9rem}
+  .check-wrap{margin:1.5rem 0}
+  .check-wrap > h3{margin-top:0}
+
+  /* ---- glossary term link ---- */
+  a.term{border-bottom:1px dotted var(--accent); text-decoration:none}
+  dl.glossary dt{font-weight:700; margin-top:1rem}
+  dl.glossary dd{margin:0.2rem 0 0.4rem; color:var(--fg)}
+
+  code{background:var(--code-bg); padding:0.1em 0.35em; border-radius:4px; font-size:0.9em}
+  pre{background:var(--code-bg); border:1px solid var(--line); border-radius:8px; padding:0.8rem 1rem;
+    overflow-x:auto; font-size:0.82rem; line-height:1.55; margin:1rem 0;
+    font-family:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;}
+  pre code{background:transparent; padding:0; font-size:1em}
+  pre .cmt{color:var(--muted)}
+  table{border-collapse:collapse; width:100%; font-size:0.9rem; margin:1rem 0}
+  th,td{border:1px solid var(--line); padding:0.4rem 0.6rem; text-align:left}
+  .scroll-x{overflow-x:auto}
+
+  /* ---- flow diagram container (第1章) ---- */
+  .flow-diagram{
+    border:1px dashed var(--line); border-radius:10px; padding:1rem;
+    background:var(--check-bg); margin:1.2rem 0; overflow-x:auto;
+  }
+  .flow-diagram .flow-placeholder{
+    display:flex; gap:0.5rem; align-items:center; justify-content:center;
+    flex-wrap:wrap; min-height:120px; color:var(--muted);
+  }
+  .flow-node{
+    background:var(--bg); border:2px solid var(--accent); color:var(--fg);
+    border-radius:8px; padding:0.5rem 0.9rem; font-size:0.85rem; font-weight:600; white-space:nowrap;
+  }
+  .flow-arrow{color:var(--accent); font-size:1.2rem}
+
+  /* ---- vertical flow (第1章 背骨の図) ---- */
+  .flow-v{display:flex; flex-direction:column; align-items:center; gap:0; margin:0 auto; max-width:32rem}
+  .flow-stage{
+    width:100%; text-align:center; border-radius:10px; padding:0.6rem 0.9rem;
+    border:2px solid var(--accent); background:var(--bg); font-weight:700;
+  }
+  .flow-stage .sub{display:block; font-weight:400; font-size:0.78rem; color:var(--muted); margin-top:0.15rem}
+  .flow-stage.result{border-color:var(--engineer-border); background:var(--engineer-bg); color:var(--engineer-fg)}
+  .flow-op{
+    display:flex; align-items:center; gap:0.5rem; padding:0.35rem 0; color:var(--muted); font-size:0.82rem;
+  }
+  .flow-op::before{content:"▼"; color:var(--accent); font-size:0.85rem}
+  .flow-op .minus{background:var(--note-bg); border:1px solid var(--note-border); color:var(--note-fg);
+    border-radius:999px; padding:0.05rem 0.6rem; font-size:0.78rem; white-space:nowrap}
+  .flow-op .times{background:var(--accent-soft); border:1px solid var(--accent); color:var(--accent);
+    border-radius:999px; padding:0.05rem 0.6rem; font-size:0.78rem; white-space:nowrap}
+  .flow-caption{text-align:center; color:var(--muted); font-size:0.82rem; margin:0.8rem 0 0}
+
+  /* ---- persona cards ---- */
+  .persona-grid{display:grid; gap:1rem; grid-template-columns:1fr}
+  .persona-card{border:1px solid var(--line); border-radius:10px; padding:1rem 1.1rem; background:var(--check-bg)}
+  .persona-card h3{margin:0 0 0.5rem}
+  .persona-card table{margin:0.4rem 0 0}
+  .persona-card td:first-child{width:34%; color:var(--muted)}
+
+  /* ---- topbar (mobile) ---- */
+  .topbar{
+    display:none; position:sticky; top:0; z-index:20; background:var(--sidebar-bg);
+    border-bottom:1px solid var(--line); padding:0.5rem 0.75rem; align-items:center; gap:0.5rem;
+  }
+  .topbar .title{font-weight:700; font-size:0.95rem; flex:1 1 auto}
+  .iconbtn{
+    background:transparent; border:1px solid var(--line); color:var(--fg);
+    border-radius:8px; padding:0.4rem 0.6rem; cursor:pointer; font-size:0.95rem; line-height:1;
+  }
+  .iconbtn:hover{background:var(--accent-soft)}
+  .theme-toggle{margin:0.5rem}
+
+  .overlay{display:none; position:fixed; inset:0; background:rgba(0,0,0,.4); z-index:29}
+
+  @media (max-width:860px){
+    .topbar{display:flex}
+    .sidebar{
+      position:fixed; z-index:30; left:0; top:0; height:100vh; width:82%; max-width:320px;
+      transform:translateX(-100%); transition:transform .22s ease;
+    }
+    body.nav-open .sidebar{transform:translateX(0)}
+    body.nav-open .overlay{display:block}
+    .content{padding:1.25rem 1rem 5rem}
+  }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <button class="iconbtn" id="menuBtn" aria-label="目次を開く">☰</button>
+  <span class="title">年末調整を体系的に理解する</span>
+  <button class="iconbtn" id="themeBtnMobile" aria-label="テーマ切り替え">◐</button>
+</div>
+
+<div class="overlay" id="overlay"></div>
+
+<div class="layout">
+  <nav class="sidebar" id="sidebar">
+    <h1>年末調整を体系的に理解する</h1>
+    <p class="sub">— エンジニアのためのドメイン知識 —</p>
+    <button class="iconbtn theme-toggle" id="themeBtn">◐ ライト / ダーク</button>
+    <ul class="toc" id="toc">
+      <li><a href="#top">はじめに・本書の登場人物</a></li>
+
+      <li class="part">第1部 全体地図</li>
+      <li><a href="#ch1">1. 所得税の全体構造</a></li>
+      <li><a href="#ch2">2. 源泉徴収制度</a></li>
+      <li><a href="#ch3">3. 年末調整の存在理由</a></li>
+      <li><a href="#ch4">4. 確定申告との棲み分け</a></li>
+
+      <li class="part">第2部 計算の部品</li>
+      <li><a href="#ch5">5. 給与所得の計算</a></li>
+      <li><a href="#ch6">6. 人的控除(1) 扶養まわり</a></li>
+      <li><a href="#ch7">7. 人的控除(2) 本人の事情</a></li>
+      <li><a href="#ch8">8. 物的控除</a></li>
+      <li><a href="#ch9">9. 税額控除</a></li>
+      <li><a href="#ch10">10. 税額計算の仕上げ</a></li>
+
+      <li class="part">第3部 手続きと帳票</li>
+      <li><a href="#ch11">11. 年末調整の実務カレンダー</a></li>
+      <li><a href="#ch12">12. 申告書を読み解く</a></li>
+      <li><a href="#ch13">13. 源泉徴収簿と源泉徴収票</a></li>
+      <li><a href="#ch14">14. 中途入社・退職・複数勤務</a></li>
+      <li><a href="#ch15">15. 過不足の精算とやり直し</a></li>
+
+      <li class="part">第4部 周辺制度との接続</li>
+      <li><a href="#ch16">16. 住民税との連携</a></li>
+      <li><a href="#ch17">17. 法定調書</a></li>
+      <li><a href="#ch18">18. 社会保険との関係</a></li>
+      <li><a href="#ch19">19. マイナンバーと電子化</a></li>
+
+      <li class="part">第5部 歴史と変化</li>
+      <li><a href="#ch20">20. 年末調整の歴史</a></li>
+      <li><a href="#ch21">21. 近年の改正の流れ</a></li>
+      <li><a href="#ch22">22. 令和8年分の変更点</a></li>
+      <li><a href="#ch23">23. これからの年末調整</a></li>
+
+      <li class="part">第6部 エンジニアのための年末調整</li>
+      <li><a href="#ch24">24. 計算ロジックの構造</a></li>
+      <li><a href="#ch25">25. 実装上の落とし穴</a></li>
+      <li><a href="#ch26">26. 毎年変わる制度への設計</a></li>
+      <li><a href="#ch27">27. 用語逆引き</a></li>
+
+      <li class="part">巻末</li>
+      <li><a href="#glossary">専門用語集</a></li>
+    </ul>
+  </nav>
+
+  <div class="content">
+    <main id="top">
+      <section class="chapter" id="intro">
+        <h2>はじめに</h2>
+        <p>この本は、年末調整のプロダクト開発に携わるエンジニアが、制度を<strong>「暗記」ではなく「構造」で理解する</strong>ための一冊です。個々の控除を丸暗記しても、翌年の税制改正で数字が変わればすぐに陳腐化します。そうではなく、「なぜこの控除が存在するのか」「なぜこの手続きが必要なのか」という<strong>制度の意図</strong>をつかめば、仕様書や計算ロジックが「なぜそう書かれているか」まで腹落ちし、改正にも自分の頭で対応できるようになります。</p>
+        <p>想定読者は、実務で少し年末調整に触れたものの、体系的な知識はこれからという方です。税務・労務の専門家である必要はありません。簿記や税法の前提知識は仮定せず、法令用語は初出時に平易に言い換え、巻末の<a href="#glossary">専門用語集</a>にリンクしています。</p>
+        <p><strong>読み方の案内。</strong>本書は6部構成です。急がば回れで、まず<a href="#ch1">第1部（全体地図）</a>を通読することを強くおすすめします。特に第1章の「収入→所得→課税所得→税額」のフロー図は本書全体の背骨で、以降のすべての章がこの一枚にぶら下がります。第2部で計算の部品（各種控除）を、第3部で手続きと帳票を学び、第4部で住民税や社会保険との接続を、第5部で歴史と改正の流れを押さえます。最後の<a href="#ch24">第6部</a>は、ここまでの制度理解を実装の視点へ還元する、エンジニア向けのまとめです。各章末には「理解度チェック」（答えは折りたたみ）を用意しました。本文中の <span class="term" style="cursor:default">下線つきの語</span> は用語集へのリンクです。全編を通じて、次に紹介する3人の架空の従業員の計算例を積み上げていきます。</p>
+        <p class="year-note-block year-note">本書の金額・要件・様式は令和7年分・令和8年分の制度を基準にしています。制度は毎年改正されるため、実務では必ず国税庁の最新情報をご確認ください。</p>
+      </section>
+
+      <section class="chapter" id="personas">
+        <h2>本書の登場人物</h2>
+        <p>本書では、次の3人の架空の従業員を通して計算例を積み上げます。章をまたいで同じ人物が登場するので、ここで顔ぶれをつかんでおいてください。（詳細な設定は <code>PERSONAS.md</code> と対応します。）</p>
+        <div class="persona-grid">
+
+          <div class="persona-card">
+            <h3>佐藤 健太（42歳）— 標準的な子育て世帯</h3>
+            <p>もっとも典型的な年末調整の主役。第2〜3部の基準ケース。</p>
+            <div class="scroll-x"><table>
+              <tr><td>職業／区分</td><td>メーカー勤務の会社員（甲欄・1か所勤務）</td></tr>
+              <tr><td>給与収入</td><td>年収 620万円</td></tr>
+              <tr><td>家族</td><td>妻・美咲（39歳・パート年収95万円）、長女・葵（16歳）、長男・陽向（10歳）</td></tr>
+              <tr><td>保険</td><td>生命保険（新制度）・介護医療・地震保険</td></tr>
+              <tr><td>住宅ローン</td><td>あり（2年目以降・年末調整で適用）</td></tr>
+              <tr><td>その他</td><td>iDeCo 月2.3万円</td></tr>
+            </table></div>
+          </div>
+
+          <div class="persona-card">
+            <h3>田中 由紀（29歳）— 単身・特定親族／中途入社</h3>
+            <p>令和7年改正の目玉（特定親族特別控除）と前職合算の説明役。</p>
+            <div class="scroll-x"><table>
+              <tr><td>職業／区分</td><td>IT企業のエンジニア（甲欄）。当年6月中途入社</td></tr>
+              <tr><td>給与収入</td><td>現勤務先 380万円 ＋ 前職 90万円（合算）</td></tr>
+              <tr><td>家族</td><td>単身。弟・翔（20歳・大学生／バイト年収150万円）を一部扶養</td></tr>
+              <tr><td>保険</td><td>生命保険（新制度）1本</td></tr>
+              <tr><td>住宅ローン</td><td>なし（賃貸）</td></tr>
+            </table></div>
+          </div>
+
+          <div class="persona-card">
+            <h3>鈴木 三郎（58歳）— 高所得・応用ケース</h3>
+            <p>給与所得控除の上限、所得金額調整控除、特定扶養・老人扶養など境界事例の主役。</p>
+            <div class="scroll-x"><table>
+              <tr><td>職業／区分</td><td>管理職の会社員（甲欄）</td></tr>
+              <tr><td>給与収入</td><td>年収 1,050万円</td></tr>
+              <tr><td>家族</td><td>妻・和子（55歳・収入なし）、長男・大輔（21歳・大学生）、母・ハル（82歳・同居）</td></tr>
+              <tr><td>保険</td><td>生命保険（旧制度一部）・地震保険</td></tr>
+              <tr><td>住宅ローン</td><td>完済済み（控除対象外）</td></tr>
+            </table></div>
+          </div>
+
+        </div>
+      </section>
+
+      <!-- ============ 第1部 ============ -->
+      <section class="part-cover" id="part1"><h2>第1部　全体地図 — 年末調整とは何か</h2></section>
+
+      <section class="chapter" id="ch1">
+        <h2>第1章　所得税の全体構造</h2>
+        <div class="chap-map"><strong>この章の位置づけ：</strong>本書のすべての土台となる「一枚の地図」を描く章です。年末調整とは、突き詰めれば「1年間の所得税を正しく計算し直す」手続きにほかなりません。その所得税がどういう順序で計算されるのか——<strong>収入 → 所得 → 課税所得 → 税額</strong>という背骨をここで押さえておけば、以降の章に登場する個々の控除や帳票が、この地図の「どこの部品なのか」として整理できます。まだ細部は覚えなくて構いません。まずは流れの骨格だけをつかんでください。</div>
+
+        <p>私たちは日常会話で「年収」「所得」「税金」といった言葉を、かなり大ざっぱに混ぜて使っています。しかし所得税の世界では、これらは<strong>はっきり別物</strong>で、しかも「この順番でしか計算できない」という強い決まりがあります。まずはその順番——本書の背骨となる計算フローを見てみましょう。</p>
+
+        <h3>収入 → 所得 → 課税所得 → 税額 のフロー図</h3>
+        <div class="flow-diagram" id="flow-income-tax" role="img" aria-label="収入から年税額までの所得税計算フロー図。収入から給与所得控除を引いて所得、所得から所得控除を引いて課税所得、課税所得に税率を掛けて算出税額、税額控除を引いて基準所得税額、復興特別所得税2.1%を加えて年税額となる。">
+          <div class="flow-v">
+            <div class="flow-stage">① 収入（額面）<span class="sub">給与・賞与の総支給額。源泉徴収票の「支払金額」</span></div>
+            <div class="flow-op"><span class="minus">− 給与所得控除</span>（会社員の必要経費のみなし）</div>
+            <div class="flow-stage">② 所得（給与所得）<span class="sub">= もうけ。源泉徴収票の「給与所得控除後の金額」</span></div>
+            <div class="flow-op"><span class="minus">− 所得控除</span>（基礎・配偶者・扶養・社会保険料・生命保険料…）</div>
+            <div class="flow-stage">③ 課税所得<span class="sub">= 税率をかける対象。1,000円未満は切り捨て</span></div>
+            <div class="flow-op"><span class="times">× 税率（5〜45%）</span>− 速算表の控除額</div>
+            <div class="flow-stage">④ 算出所得税額<span class="sub">課税所得に税率を適用した「素の税額」</span></div>
+            <div class="flow-op"><span class="minus">− 税額控除</span>（住宅ローン控除など）</div>
+            <div class="flow-stage">⑤ 基準所得税額</div>
+            <div class="flow-op"><span class="times">+ 復興特別所得税 2.1%</span></div>
+            <div class="flow-stage result">⑥ 年税額（＝その年に納めるべき所得税）</div>
+          </div>
+          <p class="flow-caption">オレンジの「−」は<strong>差し引く</strong>操作、青の「×／＋」は<strong>掛ける・足す</strong>操作。年末調整とは、この①〜⑥をもう一度たどり直して確定させる作業です。</p>
+        </div>
+
+        <h3>「収入」と「所得」は違う</h3>
+        <p>最初の関門がここです。<a class="term" href="#g-goukei">収入</a>とは受け取った額面そのもの（給与なら額面の総支給額）。<strong>所得</strong>とは、そこから「その収入を得るためにかかった経費」を引いた<em>もうけ</em>です。個人事業主なら実際の経費を引きますが、会社員は経費を一つひとつ集計しません。代わりに「収入がこれくらいなら経費はこれくらいだろう」と法律があらかじめ決めた概算額を引きます。これが<a class="term" href="#g-kyuyokoujo">給与所得控除</a>です。</p>
+        <p>たとえば佐藤健太さん（年収620万円）の場合、給与所得控除を差し引いた後の給与所得はおよそ452万円になります<span class="year-note">令和7年分時点</span>。「620万円もらった」は収入の話、「所得は452万円」はもうけの話。以降の税金計算はすべて<strong>所得</strong>を起点に進みます。給与所得控除の具体的な計算は第5章で扱います。</p>
+
+        <h3>所得控除で「課税所得」まで削る</h3>
+        <p>所得が出たら、次はそこから<a class="term" href="#g-shotokukoujo">所得控除</a>を引きます。所得控除とは、「この人にはこういう事情があるから、担税力（税を負担する力）がその分小さい」という個人の事情を税額に反映させる仕組みです。誰にでも一律に認められる<a class="term" href="#g-kiso">基礎控除</a>、扶養する家族がいる場合の扶養控除・配偶者控除、支払った社会保険料や生命保険料に応じた控除などがここに含まれます。</p>
+        <p>所得からこれら所得控除をすべて引いた残りが<a class="term" href="#g-kazeishotoku">課税所得</a>です。名前のとおり「ここに初めて税率がかかる金額」で、1,000円未満は切り捨てます。所得控除が大きいほど課税所得は小さくなり、税額も下がります。</p>
+
+        <h3>課税所得に税率をかけて「税額」を出す</h3>
+        <p>日本の所得税は<strong>超過累進税率</strong>です。課税所得が大きいほど、上に積み上がった部分にだけ高い税率がかかります。実務では段階ごとに計算する代わりに、下の<a class="term" href="#g-sokusan">速算表</a>で一気に計算します<span class="year-note">令和7年分時点</span>。</p>
+        <div class="scroll-x"><table>
+          <tr><th>課税所得金額（A）</th><th>税率（B）</th><th>控除額（C）</th></tr>
+          <tr><td>1,000円 〜 194.9万円</td><td>5%</td><td>0円</td></tr>
+          <tr><td>195万円 〜 329.9万円</td><td>10%</td><td>97,500円</td></tr>
+          <tr><td>330万円 〜 694.9万円</td><td>20%</td><td>427,500円</td></tr>
+          <tr><td>695万円 〜 899.9万円</td><td>23%</td><td>636,000円</td></tr>
+          <tr><td>900万円 〜 1,799.9万円</td><td>33%</td><td>1,536,000円</td></tr>
+          <tr><td>1,800万円 〜 3,999.9万円</td><td>40%</td><td>2,796,000円</td></tr>
+          <tr><td>4,000万円 〜</td><td>45%</td><td>4,796,000円</td></tr>
+        </table></div>
+        <p>税額 ＝ (A) × (B) − (C) です。たとえば課税所得が300万円なら、300万円 × 10% − 97,500円 ＝ 202,500円。この「控除額（C）」は、下の段階の低い税率で計算した分をあとから調整するための帳尻合わせで、所得控除とはまったく別物です（名前が似ているので注意）。</p>
+
+        <h3>税額控除は「税額そのもの」から引く</h3>
+        <p>ここが本書でもっとも混同されやすいポイントです。所得控除と<a class="term" href="#g-zeigakukoujo">税額控除</a>は、引く場所がまったく違います。</p>
+        <div class="scroll-x"><table>
+          <tr><th></th><th>所得控除</th><th>税額控除</th></tr>
+          <tr><td>引く場所</td><td>税率をかける<strong>前</strong>（所得から）</td><td>税率をかけた<strong>後</strong>（税額から）</td></tr>
+          <tr><td>効き方</td><td>控除額 × 税率 だけ税が減る</td><td>控除額が<strong>そのまま</strong>税から減る</td></tr>
+          <tr><td>10万円の控除の効果<br>（税率20%の人）</td><td>2万円の減税</td><td>10万円の減税</td></tr>
+          <tr><td>例</td><td>基礎・配偶者・扶養・社会保険料・生命保険料 など</td><td>住宅ローン控除（住宅借入金等特別控除）など</td></tr>
+        </table></div>
+        <p>同じ「10万円の控除」でも、所得控除は税率を通して薄まり、税額控除は満額そのまま効きます。だから住宅ローン控除のような税額控除は非常に強力です。フロー図でいえば、所得控除は②→③の段、税額控除は④→⑤の段。<strong>この「引く位置の違い」こそが、所得税の構造を理解する核心</strong>です。</p>
+
+        <aside class="engineer-note"><span class="tag">ENGINEER'S NOTE — 計算は「一直線のパイプライン」</span>
+        この章のフローは、そのまま実装の骨格になります。<code>収入 → 所得 → 課税所得 → 算出税額 → 基準所得税額 → 年税額</code>という単方向パイプラインで、各ステージは前段の出力だけに依存します。設計上の勘所は3つ。(1) <strong>「収入」と「所得」を別の変数・別の型として持つ</strong>——両者を <code>income</code> の一語で使い回すとバグの温床になります（第25章で詳述）。(2) <strong>控除には「所得控除」と「税額控除」の2系統があり、パイプラインへの合流点が異なる</strong>——同じ配列に混ぜてはいけません。(3) <strong>丸めのタイミングが決まっている</strong>——課税所得は1,000円未満切り捨て、税率適用は速算表、最後に復興特別所得税2.1%を上乗せ。丸め位置を1か所ずらすだけで最終税額が数百円ズレます。順序と丸めは仕様であって最適化の余地はない、と考えてください。</aside>
+
+        <h3>年末調整はこの地図のどこにいるのか</h3>
+        <p>ここまでの①〜⑥は「1年分をまとめて正しく計算する」手順です。ところが実際には、給与から毎月少しずつ所得税が天引きされています（<a class="term" href="#g-gensen">源泉徴収</a>／第2章）。その毎月の天引きはあくまで概算にすぎません。<strong>年末に、この地図の①〜⑥を正確にたどり直して本当の年税額を確定し、毎月の概算合計との差額を精算する</strong>——それが年末調整です（第3章）。つまり本書全体は、この一枚の地図の各ステージを一つずつ精密化していく旅、と考えてください。</p>
+
+        <div class="check-wrap"><h3>理解度チェック</h3>
+          <details class="check"><summary>Q1. 「収入」と「所得」はどう違いますか。会社員の場合、両者の間で何を引きますか。</summary><p>収入は受け取った額面そのもの、所得はそこから経費を引いた「もうけ」です。会社員は実際の経費ではなく、法律が定めた概算額である<strong>給与所得控除</strong>を引いて給与所得を求めます。</p></details>
+          <details class="check"><summary>Q2. 所得控除と税額控除は、それぞれ計算のどの段階で引きますか。効き方はどう違いますか。</summary><p>所得控除は税率をかける「前」に所得から引き、税額控除は税率をかけた「後」に税額から引きます。所得控除は「控除額×税率」の分だけしか税が減りませんが、税額控除は控除額がそのまま満額税から減ります。</p></details>
+          <details class="check"><summary>Q3. 課税所得が300万円のとき、所得税額（復興特別所得税を除く）はいくらですか。速算表を使って計算してください。</summary><p>300万円は「195万円〜329.9万円」の区分なので、税率10%・控除額97,500円。300万円 × 10% − 97,500円 ＝ <strong>202,500円</strong> です。</p></details>
+        </div>
+      </section>
+
+      <section class="chapter" id="ch2">
+        <h2>第2章　源泉徴収制度</h2>
+        <div class="chap-map"><strong>この章の位置づけ：</strong>第1章の地図は「1年分をまとめて計算する」話でした。しかし実際には、税は毎月の給与から少しずつ天引きされています。この「毎月の概算徴収」の仕組みが<strong>源泉徴収</strong>です。年末調整は源泉徴収があるからこそ必要になる手続きなので、まず源泉徴収の目的と、会社が負う「徴収義務者」という立場を理解しておきましょう。第3章の「ズレの精算」へ直接つながる章です。</div>
+
+        <p><a class="term" href="#g-gensen">源泉徴収</a>とは、給与や報酬を<strong>支払う側</strong>が、支払いの時点であらかじめ所得税を天引きし、本人に代わって国に納める仕組みです。「源泉」＝所得が発生する源、つまり給与が支払われるその場で税を捕まえる、という意味合いです。会社員なら、給与明細の「所得税」欄がまさにこれです。</p>
+
+        <h3>なぜ毎月、しかも概算で徴収するのか</h3>
+        <p>もし源泉徴収がなければ、全国の給与所得者が翌年に自分で1年分の所得税を計算し、まとまった額を一度に納めることになります。これには制度側から見て大きな問題があります。</p>
+        <ul>
+          <li><strong>徴収の確実性</strong>：納税者本人がお金を使い切ってしまうと、後から一括で払うのは難しい。給与から先に天引きすれば取りっぱぐれがない。</li>
+          <li><strong>納税者の負担の平準化</strong>：年1回の大きな支払いより、毎月少しずつのほうが家計への衝撃が小さい。</li>
+          <li><strong>税務署の事務負担の分散</strong>：数千万人の申告を一時期に処理せず、日々の給与支払いに乗せて薄く広く集められる。</li>
+        </ul>
+        <p>ただし毎月の給与時点では、その人の1年間の総収入も、年内に支払う社会保険料も、扶養家族の状況の最終形も確定していません。そこで源泉徴収は「1年間これがずっと続いたらこれくらいだろう」という<strong>概算</strong>で徴収します。使うのが<a class="term" href="#g-zeigakuhyo">源泉徴収税額表</a>です。その月の社会保険料控除後の給与額と、扶養親族等の数から、天引き額が機械的に決まります。</p>
+
+        <h3>甲欄・乙欄・丙欄 —— どの列を引くか</h3>
+        <p>源泉徴収税額表（月額表）には<strong>甲欄</strong>と<strong>乙欄</strong>があります。どちらを使うかは<a class="term" href="#g-marufu">扶養控除等（異動）申告書</a>（通称マル扶）をその会社に出しているかで決まります。</p>
+        <div class="scroll-x"><table>
+          <tr><th>欄</th><th>使う条件</th><th>特徴</th></tr>
+          <tr><td>甲欄</td><td>その勤務先にマル扶を提出（＝主たる給与）</td><td>扶養親族等の数を反映。税額は低め。年末調整の対象</td></tr>
+          <tr><td>乙欄</td><td>マル扶を提出していない（＝従たる給与・掛け持ちの2社目など）</td><td>高めに徴収。その勤務先では年末調整しない</td></tr>
+          <tr><td>丙欄</td><td>日雇い・短期のアルバイト（日額表）</td><td>特例的な扱い</td></tr>
+        </table></div>
+        <p>マル扶は「1か所にしか出せない」決まりです。だから2か所以上で働く人は、メインの1社にだけマル扶を出して甲欄で徴収され、もう1社は乙欄で高めに徴収される、という形になります。佐藤健太さん・田中由紀さん・鈴木三郎さんはいずれも1か所勤務・甲欄なので、標準的な年末調整の対象者です。田中さんの中途入社・前職合算のような論点は第14章で扱います。</p>
+
+        <h3>「徴収義務者」であることの意味</h3>
+        <p>ここが源泉徴収制度の肝です。天引きして国に納める義務を負うのは、給与を受け取る従業員ではなく、<strong>給与を支払う会社</strong>です。これを<a class="term" href="#g-choshugimusha">源泉徴収義務者</a>と呼びます。つまり所得税の納付という国との関係において、会社は「従業員の代わりに税を集めて納める、国の徴収代行者」の立場に立たされているのです。</p>
+        <p>この立場には重い責任が伴います。天引きした所得税は原則として<strong>翌月10日まで</strong>に納付しなければなりません。徴収し忘れ・納付漏れがあれば、（本来の負担者は従業員であっても）会社が不納付加算税や延滞税を課されます。「従業員のお金を預かって国に橋渡ししている」ため、そこにミスがあれば橋渡し役である会社の責任になる、という構造です。</p>
+
+        <aside class="engineer-note"><span class="tag">ENGINEER'S NOTE — 税額表は「関数」ではなくデータ</span>
+        月次の源泉徴収額は、計算式というより<strong>ルックアップテーブル</strong>で決まります。入力は「その月の社会保険料控除後の給与額」と「扶養親族等の数」、出力は税額表のセルの値。実装では税額表を式で近似せず、<strong>国税庁が公表する税額表そのものをデータとして持つ</strong>のが原則です（電子計算機用の計算式も別途公表されていますが、いずれも「与えられた仕様」であって自前で導出するものではありません）。ここで意識したいのは、月次の源泉徴収額は<strong>あくまで概算</strong>であり、正確さを担保するのは年末調整だという役割分担です。だから月次ロジックは「税額表どおりに引けているか」を検証すればよく、1年間の正しさまで背負う必要はありません。なお第22章で触れるとおり、令和8年分は基礎控除等の引き上げが月次の税額表には反映されず、その差は年末調整で精算される点に注意が必要です<span class="year-note">令和8年分時点</span>。</aside>
+
+        <div class="check-wrap"><h3>理解度チェック</h3>
+          <details class="check"><summary>Q1. 源泉徴収が「毎月・概算」で行われるのはなぜですか。理由を2つ挙げてください。</summary><p>徴収の確実性（給与から先に天引きすれば取りっぱぐれがない）、納税者の負担の平準化（年1回の一括より毎月少しずつのほうが家計に優しい）、税務署の事務負担の分散、などのうち2つ。月次時点では年間の収入・保険料・扶養状況が確定していないため、税額表による概算で徴収します。</p></details>
+          <details class="check"><summary>Q2. 甲欄と乙欄はどう使い分けますか。判断の基準になる書類は何ですか。</summary><p>その勤務先に<strong>扶養控除等（異動）申告書（マル扶）</strong>を提出していれば甲欄（主たる給与、年末調整の対象）、提出していなければ乙欄（従たる給与、高めに徴収）です。マル扶は1か所にしか提出できません。</p></details>
+          <details class="check"><summary>Q3. 「源泉徴収義務者」とは誰のことで、なぜ責任が重いのですか。</summary><p>給与を支払う会社のことです。会社は従業員の税を天引きして翌月10日までに国へ納める「徴収代行者」の立場にあり、徴収漏れ・納付漏れがあると（本来の負担者は従業員でも）会社が加算税・延滞税を負う構造だからです。</p></details>
+        </div>
+      </section>
+
+      <section class="chapter" id="ch3">
+        <h2>第3章　年末調整の存在理由</h2>
+        <div class="chap-map"><strong>この章の位置づけ：</strong>第1章で「正しい年税額」の出し方を、第2章で「毎月の概算徴収」を見ました。この2つは必ずズレます。そのズレを年末に精算して帳尻を合わせるのが<strong>年末調整</strong>です。この章では、ズレがどこから生まれるのか、そしてなぜ会社がわざわざ精算まで引き受けるのかを構造として押さえます。ここが本書のタイトルそのものにあたる中心の章です。</div>
+
+        <p><a class="term" href="#g-nencho">年末調整</a>とは、その年の最後の給与を支払うときに、<strong>毎月概算で源泉徴収してきた所得税の合計</strong>と、<strong>第1章の地図をたどって計算した本当の年税額</strong>を突き合わせ、その差額を精算する手続きです。式で書けば次の一行に尽きます。</p>
+        <div class="flow-diagram"><div class="flow-v" style="max-width:36rem">
+          <div class="flow-stage">年末調整の過不足額<span class="sub">= 源泉徴収税額の合計（概算） − 年調年税額（実額）</span></div>
+          <div class="flow-op"><span class="minus">プラスなら還付</span>／<span class="times">マイナスなら追徴</span></div>
+          <div class="flow-stage result">12月（または最終給与）で従業員へ還付 or 追加徴収</div>
+        </div></div>
+        <p>毎月引きすぎていれば差額を従業員に<strong>還付</strong>（返す）、引き足りなければ<strong>追徴</strong>（追加で徴収する）。多くの人は還付になるため「年末調整＝お金が戻ってくるイベント」という印象を持っていますが、本質は<strong>戻すか足すかで正しい額に合わせる</strong>ことです。</p>
+
+        <h3>なぜズレるのか —— ズレの発生源</h3>
+        <p>月次の源泉徴収は「1年間ずっと同じ状況が続く」という仮定の概算でした。現実はその仮定どおりにいきません。ズレは主に次のような源から生まれます。</p>
+        <div class="scroll-x"><table>
+          <tr><th>ズレの発生源</th><th>なぜ月次では捉えきれないか</th><th>典型的な向き</th></tr>
+          <tr><td>賞与の存在</td><td>賞与にかかる源泉徴収は前月給与ベースの率で機械的に決まり、年間で見ると過不足が出やすい</td><td>どちらにも</td></tr>
+          <tr><td>年の途中の扶養の変化</td><td>子の出生・就職、配偶者の収入変動などは年末時点の現況で確定する</td><td>どちらにも</td></tr>
+          <tr><td>生命保険料・地震保険料控除</td><td>月次の税額表では一切考慮されない。年末に控除証明書で初めて申告</td><td>還付方向</td></tr>
+          <tr><td>社会保険料の実額</td><td>月々の実際の控除額と、税額表の前提がぴったり一致しない</td><td>どちらにも</td></tr>
+          <tr><td>住宅ローン控除（2年目以降）</td><td>税額控除は月次に反映されず、年末調整で初めて差し引く</td><td>還付方向</td></tr>
+          <tr><td>基礎控除など制度改正</td><td>改正が月次の税額表に間に合わない年は、差額を年末で精算<span class="year-note">令和8年分の論点</span></td><td>還付方向</td></tr>
+        </table></div>
+        <p>ポイントは、<strong>月次で使う情報は「毎月わかること」に限られる</strong>という点です。生命保険料をいくら払ったか、扶養家族が最終的に何人か、住宅ローン残高はいくらか——こうした情報は年末にまとめて集めるしかありません。だから年末調整では、これらを申告書（第12章）で回収し、第1章の地図を「実額」で引き直すのです。</p>
+
+        <h3>計算例：佐藤健太さんはなぜ還付されるのか</h3>
+        <p>佐藤さん（年収620万円<span class="year-note">令和7年分時点</span>）を例にとります。毎月の源泉徴収では、生命保険料控除・地震保険料控除・iDeCo（小規模企業共済等掛金控除）・住宅ローン控除（2年目以降の税額控除）は<strong>一切考慮されていません</strong>。年末調整でこれらを申告すると、</p>
+        <ul>
+          <li>生命保険料控除・介護医療保険料控除・地震保険料控除・iDeCoの掛金 → いずれも<strong>所得控除</strong>が増える → 課税所得が下がる → 本当の年税額が月次の前提より小さくなる</li>
+          <li>住宅ローン控除 → <strong>税額控除</strong>としてさらに税額から直接引かれる</li>
+        </ul>
+        <p>結果、実額で計算した年調年税額は、毎月概算で徴収してきた合計より小さくなります。その差額が佐藤さんに<strong>還付</strong>されます。個々の控除の計算は第2部で詳しく積み上げますが、「月次で無視されていた控除が年末にまとめて効くから戻る」という構造だけ、ここでつかんでください。</p>
+        <p>逆に、年の途中で扶養家族が減った人や、副収入で月次の前提が甘かった人などは<strong>追徴</strong>になることもあります。還付が当たり前ではなく、あくまで「正しい額への精算」だという点が大切です。</p>
+
+        <h3>なぜ会社が精算まで引き受けるのか</h3>
+        <p>第2章で見たとおり、会社はすでに源泉徴収義務者として毎月の給与データを持っています。誰にいくら払い、いくら天引きしたかを把握しているのは会社です。ならば「年末にその集計を締めて、正しい年税額との差を精算する」役目も会社に負わせるのが合理的——これが日本の制度設計です。その結果、<strong>大多数の給与所得者は自分で確定申告をしなくて済み</strong>、税務署も膨大な申告処理を負わずに済みます。年末調整は、源泉徴収制度とセットで「申告不要のインフラ」を成立させているわけです。この棲み分け（年末調整で完結する人／確定申告が要る人）は第4章で扱います。</p>
+
+        <aside class="engineer-note"><span class="tag">ENGINEER'S NOTE — 年末調整は「再計算」である</span>
+        年末調整のロジックは、新しい計算ではなく<strong>第1章のパイプラインを実額で走らせ直す再計算</strong>だと捉えると見通しが良くなります。実装上のポイントは2つ。(1) <strong>月次の源泉徴収額の「合計」は、年末調整の入力の一つにすぎない</strong>——年間の正しい税額は申告書データから独立に組み立て、最後に「合計源泉税額 − 年調年税額」で過不足を出します。月次の積み上げから逆算するのではなく、あるべき年税額を先に確定させるのが筋です。(2) <strong>判定はすべて「12月31日時点の現況」に統一する</strong>——扶養親族の人数や年齢、配偶者の所得区分などは基準日で確定させ、年の途中の状態と混ぜないこと（第25章）。過不足の符号（還付＝マイナス徴収、追徴＝プラス徴収）の扱いも、後工程の帳票・住民税連携まで一貫させておく必要があります。</aside>
+
+        <div class="check-wrap"><h3>理解度チェック</h3>
+          <details class="check"><summary>Q1. 年末調整の過不足額は、どんな引き算で求められますか。</summary><p><strong>毎月源泉徴収してきた所得税の合計（概算）− 実額で計算した年調年税額</strong>です。プラスなら還付、マイナスなら追徴になります。</p></details>
+          <details class="check"><summary>Q2. 月次の源泉徴収と本当の年税額がズレる原因を、具体的に3つ挙げてください。</summary><p>賞与の源泉徴収が年間で見ると過不足を生む／生命保険料・地震保険料控除が月次では考慮されない／住宅ローン控除（税額控除）が月次に反映されない／年の途中の扶養の変化／社会保険料の実額のずれ、などから3つ。いずれも「月次では捉えきれず年末にまとめて確定する情報」です。</p></details>
+          <details class="check"><summary>Q3. 「年末調整＝必ずお金が戻る」という理解はなぜ不正確ですか。</summary><p>年末調整の本質は還付ではなく「正しい年税額への精算」だからです。引きすぎなら還付ですが、扶養が減った・月次の前提が甘かったなどの場合は追徴（追加徴収）になることもあります。</p></details>
+        </div>
+      </section>
+
+      <section class="chapter" id="ch4">
+        <h2>第4章　確定申告との棲み分け</h2>
+        <div class="chap-map"><strong>この章の位置づけ：</strong>年末調整は万能ではありません。会社が給与データの範囲で完結できることには限界があり、そこからはみ出す部分は<strong>確定申告</strong>が引き受けます。この章では「年末調整でできること・できないこと」と「そもそも年末調整の対象になる人・ならない人」を線引きします。第1部の締めくくりとして、年末調整という制度の輪郭をはっきりさせる章です。</div>
+
+        <p><a class="term" href="#g-kakutei">確定申告</a>は、納税者本人が1年間の所得と税額を計算して税務署に申告・納税（または還付を受ける）手続きです。年末調整と確定申告は対立するものではなく、<strong>役割分担</strong>の関係にあります。年末調整は「会社が給与について代行できる範囲」、確定申告は「本人にしか分からない・給与以外の事情まで含めた全体」を担当します。</p>
+
+        <h3>なぜ年末調整には「できないこと」があるのか</h3>
+        <p>理由はシンプルで、<strong>会社が把握できるのは給与に関する情報だけ</strong>だからです。医療費をいくら払ったか、どこにふるさと納税したか、株でいくら儲かったか、副業の収支はどうか——こうした情報は会社の給与システムの外にあります。会社が知りようのない情報や、証憑の真偽を会社に判断させるべきでない控除は、制度上あえて年末調整の対象外にして、本人の確定申告に委ねているのです。</p>
+
+        <h3>年末調整でできること・できないこと</h3>
+        <div class="scroll-x"><table>
+          <tr><th>控除・手続き</th><th>年末調整</th><th>確定申告</th></tr>
+          <tr><td>基礎控除・配偶者(特別)控除・扶養控除</td><td>できる</td><td>—</td></tr>
+          <tr><td>社会保険料控除・小規模企業共済等掛金控除（iDeCo）</td><td>できる</td><td>—</td></tr>
+          <tr><td>生命保険料控除・地震保険料控除</td><td>できる</td><td>—</td></tr>
+          <tr><td>特定親族特別控除<span class="year-note">令和7年創設</span></td><td>できる</td><td>—</td></tr>
+          <tr><td>住宅ローン控除（2年目以降）</td><td>できる</td><td>—</td></tr>
+          <tr><td><strong>住宅ローン控除（初年＝1年目）</strong></td><td>できない</td><td><strong>必要</strong></td></tr>
+          <tr><td><strong>医療費控除・セルフメディケーション税制</strong></td><td>できない</td><td><strong>必要</strong></td></tr>
+          <tr><td><strong>寄附金控除（ふるさと納税※）</strong></td><td>できない</td><td><strong>必要</strong>（※例外あり・後述）</td></tr>
+          <tr><td><strong>雑損控除</strong>（災害・盗難など）</td><td>できない</td><td><strong>必要</strong></td></tr>
+        </table></div>
+
+        <p>境界線を覚えるより、<strong>なぜそこに線が引かれるか</strong>で理解しましょう。</p>
+        <ul>
+          <li><strong>住宅ローン控除の初年だけ確定申告</strong>：初年は登記事項証明書や売買契約書など多くの書類で「本当にその住宅を取得し居住したか」を税務署が確認する必要があります。2年目以降は税務署が発行する残高ベースの証明で足りるため、会社に任せられる＝年末調整でできるようになります（詳細は第9章）。</li>
+          <li><strong>医療費控除・雑損控除が確定申告のみ</strong>：家族全体の医療費の集計や災害の実態は、会社が検証しようのない本人固有の事情だからです。</li>
+          <li><strong>寄附金控除（ふるさと納税）</strong>：寄附先の証明にもとづく控除で、原則は確定申告。ただし給与所得者向けの例外として<strong>ワンストップ特例</strong>があり、寄附先が5団体以内で他に確定申告の必要がない場合は、確定申告なしで（所得税分も含め）翌年度の住民税から控除されます。これは年末調整で処理するものではない点に注意（住民税との連携は第16章）。</li>
+        </ul>
+
+        <h3>年末調整の対象になる人・ならない人</h3>
+        <p>もう一つの棲み分けが「そもそも年末調整してもらえるか」です。<strong>その年の最後の給与のときにマル扶を提出している、1か所勤務の甲欄の従業員</strong>が基本の対象です。</p>
+        <div class="scroll-x"><table>
+          <tr><th>年末調整の対象になる（代表例）</th><th>対象にならない（代表例）</th></tr>
+          <tr><td>1年を通じて勤務した従業員</td><td>マル扶を出していない人（乙欄・従たる給与）</td></tr>
+          <tr><td>年の途中で就職し年末まで在籍する人（中途入社。前職分は合算／第14章）</td><td>年の途中で退職し再就職していない人（原則）</td></tr>
+          <tr><td>年の途中の退職でも一定要件を満たす場合（死亡退職、心身の障害による退職など）</td><td>給与収入が<strong>2,000万円を超える</strong>人（要確定申告）</td></tr>
+        </table></div>
+        <p>本書のペルソナで言えば、佐藤健太さん・田中由紀さん（中途入社・前職合算）・鈴木三郎さんはいずれも1か所勤務・甲欄で、年末調整の対象です。ただし<strong>年末調整の対象者であっても、医療費控除やふるさと納税（確定申告方式）を使いたい場合は、年末調整とは別に自分で確定申告する</strong>——この「両方やる」パターンは実務で非常に多く、混乱しやすいので押さえておきましょう。年末調整で給与分を締めたうえで、確定申告で残りの控除を上乗せする、という積み上げです。</p>
+
+        <aside class="engineer-note"><span class="tag">ENGINEER'S NOTE — 「対象外」と「対象だが未完」を分けて設計する</span>
+        年末調整プロダクトでは、対象者判定を早い段階のゲートとして持つのが定石です。実装で効くのは次の切り分け。(1) <strong>そもそも年末調整の対象外</strong>（乙欄、給与2,000万円超、年途中退職など）——この人は年末調整フローに乗せず確定申告へ案内する。(2) <strong>対象だが、扱えない控除を持っている</strong>（医療費控除・初年の住宅ローン控除・ふるさと納税の確定申告分など）——年末調整は通常どおり完了させつつ、「この控除は確定申告で」と<strong>誘導・注記</strong>する。両者を「できない」の一語で潰すと、後者のユーザーに誤った案内をしてしまいます。加えて、給与2,000万円超のような閾値は年度パラメータとして外出しし（第26章）、判定基準日（12月31日時点）で確定する属性と、入社・退職といったイベント日で決まる属性を明確に区別しておくと、中途入社・退職（第14章）の分岐が破綻しません。</aside>
+
+        <div class="check-wrap"><h3>理解度チェック</h3>
+          <details class="check"><summary>Q1. 医療費控除・初年の住宅ローン控除・ふるさと納税（確定申告方式）は、年末調整でできますか。できないとしたらなぜですか。</summary><p>いずれも年末調整ではできず、確定申告が必要です。会社が検証できない本人固有の事情（医療費の集計、住宅取得の実態確認、寄附先の証明）にもとづく控除だからです。住宅ローン控除は<strong>初年だけ</strong>確定申告で、2年目以降は年末調整でできます。</p></details>
+          <details class="check"><summary>Q2. 年末調整の対象にならない人を2つ挙げてください。</summary><p>マル扶を提出していない人（乙欄・従たる給与）、給与収入が2,000万円を超える人、年の途中で退職して再就職していない人（原則）、などから2つ。</p></details>
+          <details class="check"><summary>Q3. 「年末調整の対象者だから確定申告は一切不要」は正しいですか。</summary><p>正しくありません。年末調整で給与分の精算は完結しますが、医療費控除やふるさと納税（確定申告方式）などを使いたい場合は、対象者であっても別途自分で確定申告して控除を上乗せする必要があります。年末調整と確定申告は「両方やる」ことがあり得ます。</p></details>
+        </div>
+      </section>
+
+      <!-- ============ 第2部 ============ -->
+      <section class="part-cover" id="part2"><h2>第2部　計算の部品 — 所得と控除を理解する</h2></section>
+
+      <section class="chapter" id="ch5">
+        <h2>第5章　給与所得の計算</h2>
+        <div class="chap-map"><strong>この章の位置づけ：</strong>第1部で描いた背骨の地図——<strong>収入 → 所得 → 課税所得 → 税額</strong>——の、いちばん最初の一歩をここで精密化します。会社員の「所得」はどう決まるのか。額面（収入）から差し引く<strong>給与所得控除</strong>とは何で、なぜ実際の経費ではなく法律が決めた概算なのか。そして高所得の子育て世帯などを救う<strong>所得金額調整控除</strong>まで。第6章以降の所得控除は、すべてこの章で求めた「給与所得」を出発点に引き算していきます。ここが第2部全体の土台です。</div>
+
+        <p>第1章で触れたとおり、<strong>収入</strong>と<strong>所得</strong>は別物です。もう一度だけ確認しておきましょう。収入は受け取った額面そのもの、所得はそこから「その収入を得るためにかかった経費」を引いた<em>もうけ</em>です。個人事業主なら帳簿をつけて実際の経費を引きますが、会社員が一人ひとり領収書を集めて経費計算するのは非現実的です。そこで所得税法は、「これくらいの収入ならこれくらい経費がかかっているだろう」という概算額をあらかじめ決めておきました。これが<a class="term" href="#g-kyuyokoujo">給与所得控除</a>です。</p>
+
+        <div class="flow-diagram"><div class="flow-v" style="max-width:34rem">
+          <div class="flow-stage">給与等の収入金額<span class="sub">源泉徴収票の「支払金額」。複数社なら合算</span></div>
+          <div class="flow-op"><span class="minus">− 給与所得控除</span>（会社員の必要経費のみなし）</div>
+          <div class="flow-stage">給与所得の金額</div>
+          <div class="flow-op"><span class="minus">− 所得金額調整控除</span>（該当者のみ）</div>
+          <div class="flow-stage result">調整後の給与所得の金額<span class="sub">第6章以降の所得控除は、ここから引いていく</span></div>
+        </div></div>
+
+        <h3>給与所得控除の速算表</h3>
+        <p>給与所得控除は、収入が増えるほど額も増えますが、頭打ち（上限）があります。<span class="year-note">令和7年分</span>の速算表は次のとおりです。令和7年改正で<strong>最低保障額が55万円→65万円に引き上げ</strong>られ、区分の下限も「180万円以下」から「190万円以下」へ動いています。いわゆる「103万円の壁」が動いたのは、この給与所得控除（＋基礎控除）の引き上げが正体です。</p>
+        <div class="scroll-x"><table>
+          <tr><th>給与等の収入金額（A）</th><th>給与所得控除額</th></tr>
+          <tr><td>190万円以下</td><td>65万円（最低保障）</td></tr>
+          <tr><td>190万円超 360万円以下</td><td>A × 30% ＋ 8万円</td></tr>
+          <tr><td>360万円超 660万円以下</td><td>A × 20% ＋ 44万円</td></tr>
+          <tr><td>660万円超 850万円以下</td><td>A × 10% ＋ 110万円</td></tr>
+          <tr><td>850万円超</td><td>195万円（上限・頭打ち）</td></tr>
+        </table></div>
+        <p class="year-note-block year-note">令和8年分は最低保障額がさらに変わります。本則69万円ですが、令和8・9年分は特例で<strong>74万円</strong>（区分の下限も「210万円以下」に）。課税最低限178万円の一部を構成します。詳細は第22章。本章の計算例は令和7年分で統一します。</p>
+        <p>注意点が2つ。第一に、給与収入660万円未満は本来「所得税法別表第五」という円単位の表で求める建前ですが、実務上はこの速算表でおおむね一致します。第二に、上限が195万円である以上、<strong>収入850万円を超える人の給与所得控除はいくら稼いでも増えません</strong>。この「増えない層」への配慮が、次の所得金額調整控除につながります。</p>
+
+        <h3>計算例：3人の給与所得</h3>
+        <p>ペルソナ3人の給与所得を、上の速算表で実際に求めてみましょう<span class="year-note">令和7年分</span>。</p>
+        <div class="scroll-x"><table>
+          <tr><th>本人</th><th>給与収入</th><th>給与所得控除</th><th>給与所得</th></tr>
+          <tr><td>佐藤健太</td><td>620万円</td><td>620 × 20% ＋ 44 ＝ 168万円</td><td><strong>452万円</strong></td></tr>
+          <tr><td>田中由紀</td><td>470万円（現380＋前職90の合算）</td><td>470 × 20% ＋ 44 ＝ 138万円</td><td><strong>332万円</strong></td></tr>
+          <tr><td>鈴木三郎</td><td>1,050万円</td><td>195万円（上限）</td><td><strong>855万円</strong></td></tr>
+        </table></div>
+        <p>田中さんのように年の途中で転職した人は、<strong>前職の給与も合算した年収</strong>で給与所得控除を計算します（前職源泉徴収票の合算は第14章）。380万円と90万円を別々に計算するのではなく、合算した470万円を一つの収入として速算表に当てるのがポイントです。鈴木さんは収入が850万円を超えているので、控除は上限の195万円で頭打ちになります。</p>
+
+        <h3>所得金額調整控除 ——「増えない層」への調整</h3>
+        <p>給与所得控除の上限195万円は、平成30年改正で導入されました。しかし単純に上限を設けると、「収入は高いが、子育てや介護で出費がかさむ世帯」まで一律に不利になってしまいます。そこで、<strong>収入850万円超でも一定の事情がある人には、負担増を和らげる</strong>ために設けられたのが<a class="term" href="#g-shotokuchosei">所得金額調整控除</a>（子ども・特別障害者等がある場合）です。</p>
+        <p>給与収入が850万円を超え、かつ次のいずれかに当てはまる人が対象です。</p>
+        <ul>
+          <li>本人が<strong>特別障害者</strong></li>
+          <li><strong>23歳未満の扶養親族</strong>がいる（＝子育て世帯）</li>
+          <li>特別障害者である<strong>同一生計配偶者または扶養親族</strong>がいる</li>
+        </ul>
+        <p>控除額は次の式で、上限15万円です。</p>
+        <div class="scroll-x"><table>
+          <tr><td>所得金額調整控除額 ＝ ｛min(給与収入, 1,000万円) − 850万円｝ × 10%</td></tr>
+        </table></div>
+        <p>鈴木三郎さん（収入1,050万円）は、21歳の長男・大輔さん（23歳未満の扶養親族）がいるため対象です。<code>(1,000万 − 850万) × 10% ＝ 15万円</code>（収入は1,000万円で頭打ち）。先ほどの給与所得855万円から、さらにこの15万円を引いた<strong>840万円</strong>が、鈴木さんの調整後の給与所得になります。佐藤さん・田中さんは収入が850万円以下なので、この控除は関係ありません。</p>
+        <p class="year-note-block year-note">もう一種類、「給与所得と年金所得の両方がある人」向けの所得金額調整控除もありますが、こちらは年末調整では処理できず確定申告が必要です。年末調整で扱うのは上記の「子ども・特別障害者等」の類型だけです。</p>
+
+        <aside class="engineer-note"><span class="tag">ENGINEER'S NOTE — 給与所得控除は「表」、所得金額調整控除は「条件付きの式」</span>
+        実装の勘所を3つ。(1) <strong>給与所得控除は区分ごとの一次式のテーブル</strong>として持つ。収入が区分の境界（190万・360万・660万・850万）にちょうど乗るときの「以下／超」の判定を1円単位で正しく実装すること。境界値テストは必須です。(2) 給与収入660万円未満は厳密には別表第五（円単位の階段表）ですが、速算表との差は限定的。プロダクトの要件に応じてどちらを正とするか仕様で固定します。(3) <strong>所得金額調整控除は「850万円超」ゲート＋扶養・障害の条件判定＋<code>min(収入,1000万)</code>のクランプ</strong>という多段の分岐。特に扶養親族の年齢（23歳未満）は<strong>その年12月31日時点</strong>で判定します。給与所得控除を引く前の「収入」を条件に使い、控除額の計算にも「収入」を使う——第1章で警告した<code>income</code>と<code>shotoku</code>の変数取り違えが起きやすい典型箇所です。年度で変わる金額（65万／74万、上限195万など）はすべて年度パラメータに外出しを（第26章）。</aside>
+
+        <div class="check-wrap"><h3>理解度チェック</h3>
+          <details class="check"><summary>Q1. 会社員の「給与所得」はどう計算しますか。なぜ実際の経費を集計しないのですか。</summary><p>給与収入から<strong>給与所得控除</strong>（法律が定めた概算経費）を差し引いて求めます。会社員が一人ひとり領収書を集めて経費計算するのは非現実的なため、収入額に応じた概算額をあらかじめ法律で決めているからです。</p></details>
+          <details class="check"><summary>Q2. 給与収入620万円（令和7年分）の給与所得はいくらですか。</summary><p>620万円は「360万円超660万円以下」の区分なので、給与所得控除 ＝ 620 × 20% ＋ 44 ＝ 168万円。給与所得 ＝ 620 − 168 ＝ <strong>452万円</strong>です。</p></details>
+          <details class="check"><summary>Q3. 所得金額調整控除（子ども等）は誰が対象で、いくら引けますか。鈴木さん（収入1,050万円・21歳の子あり）で計算してください。</summary><p>給与収入850万円超で、23歳未満の扶養親族・特別障害者などがいる人が対象。控除額 ＝ ｛min(収入,1,000万) − 850万｝× 10%、上限15万円。鈴木さんは (1,000 − 850) × 10% ＝ <strong>15万円</strong>です。</p></details>
+        </div>
+      </section>
+
+      <section class="chapter" id="ch6">
+        <h2>第6章　人的控除(1) 扶養まわり</h2>
+        <div class="chap-map"><strong>この章の位置づけ：</strong>ここからは所得控除の本体に入ります。所得控除は大きく「人的控除（家族や本人の事情）」と「物的控除（支払った保険料など）」に分かれます。本章は前者のうち<strong>家族に関する控除</strong>——扶養控除、配偶者控除・配偶者特別控除、そして令和7年創設の<strong>特定親族特別控除</strong>を扱います。どれも「養う家族がいる人は担税力が下がる」という同じ思想の変奏です。金額を暗記するのではなく、まず全控除に共通する2つの判定概念——<strong>合計所得金額</strong>と<strong>生計を一にする</strong>——を先に押さえます。</div>
+
+        <h3>まず共通言語：「合計所得金額」と「生計を一にする」</h3>
+        <p>扶養控除も配偶者控除も、「その家族が<strong>扶養される側の条件</strong>を満たすか」で適用が決まります。その条件の中心が<a class="term" href="#g-goukei">合計所得金額</a>です。ざっくり言えば「その人自身の1年間のもうけの合計」。給与だけの人なら、第5章で見た<strong>給与収入 − 給与所得控除（最低65万円）</strong>がそのまま合計所得金額です。だから「給与収入◯万円まで」と「合計所得◯万円まで」は、給与所得控除の分だけズレた同じことを言っています。</p>
+        <p class="year-note-block year-note">令和7年改正で、扶養親族・同一生計配偶者の<strong>合計所得金額の要件が48万円以下 → 58万円以下</strong>に引き上げられました。給与収入だけなら<strong>103万円 → 123万円</strong>に相当します（103万＝48万＋旧給与所得控除55万、123万＝58万＋新65万）。これが「103万円の壁が動いた」の中身です。令和8年分はさらに62万円以下（本章の計算例は令和7年分）。</p>
+        <p>もう一つが<a class="term" href="#g-seikei">生計を一にする</a>。同居していなくても、仕送りなどで<strong>生活の財布が実質的につながっていれば</strong>「生計を一にする」と扱われます。単身赴任の親、下宿の大学生の子、仕送りしている田舎の親などが典型。逆に同居していても財布が完全に独立していれば別。田中由紀さんが実家の弟に仕送りしているケースは、別居でも「生計を一にする」に当たり得ます。</p>
+
+        <h3>扶養控除 —— 年齢で額が変わる</h3>
+        <p><a class="term" href="#g-fuyou">扶養控除</a>は、配偶者以外の親族（子・親など）を養っている場合の控除です。対象になるのは<strong>控除対象扶養親族</strong>——生計を一にし、合計所得金額が58万円以下<span class="year-note">令和7年分</span>で、かつ<strong>その年12月31日時点で16歳以上</strong>の親族です。16歳未満の子は児童手当があるため扶養控除の対象外（ただし障害者控除や住民税の非課税判定では意味を持つので申告書には書きます）。年齢で額が変わります。</p>
+        <div class="scroll-x"><table>
+          <tr><th>区分</th><th>年齢（12/31時点）</th><th>控除額</th></tr>
+          <tr><td>一般の控除対象扶養親族</td><td>16歳以上19歳未満・23歳以上70歳未満</td><td>38万円</td></tr>
+          <tr><td>特定扶養親族</td><td>19歳以上23歳未満</td><td>63万円</td></tr>
+          <tr><td>老人扶養親族（同居老親等以外）</td><td>70歳以上</td><td>48万円</td></tr>
+          <tr><td>老人扶養親族（同居老親等）</td><td>70歳以上・本人や配偶者の直系尊属で同居</td><td>58万円</td></tr>
+        </table></div>
+        <p><strong>特定扶養親族</strong>（19〜22歳）の額が大きいのは、大学生年代で教育費が最もかさむからです。<strong>同居老親等</strong>が手厚いのは、同居で親を扶養する負担への配慮です。佐藤さんの長女・葵さん（16歳）は一般扶養で<strong>38万円</strong>、長男・陽向さん（10歳）は16歳未満なので扶養控除は<strong>0円</strong>。鈴木さんは母・ハルさん（82歳・同居）で同居老親等<strong>58万円</strong>——長男・大輔さん（21歳）は本来なら特定扶養63万円ですが、次に述べる事情で扱いが変わります。</p>
+
+        <h3>配偶者控除・配偶者特別控除 ——「崖」をなくした二段構え</h3>
+        <p>配偶者については専用の控除があります。ポイントは<strong>本人（納税者）の所得によっても額が変わる</strong>ことと、<strong>配偶者の所得が増えても急に控除が消えない</strong>設計です。</p>
+        <ul>
+          <li><a class="term" href="#g-haiguusha">配偶者控除</a>：配偶者の合計所得が<strong>58万円以下</strong>（給与収入123万円以下）<span class="year-note">令和7年分</span>。控除額は本人の所得に応じ最高38万円（配偶者が70歳以上の老人控除対象配偶者は最高48万円）。</li>
+          <li><a class="term" href="#g-haiguutokubetsu">配偶者特別控除</a>：配偶者の合計所得が<strong>58万円超133万円以下</strong>。所得が増えるほど控除が段階的に減る。</li>
+        </ul>
+        <p>この二段構えの狙いは「働き損の解消」です。もし配偶者控除が所得58万円で完全に消えるだけなら、あと少し稼ぐと控除ゼロで手取りが逆に減る「崖」が生じます。配偶者特別控除は、58万円を超えた先を<strong>なだらかな下り坂</strong>にして崖をならしています。さらに本人の合計所得が<strong>1,000万円を超えると、配偶者控除・配偶者特別控除はどちらも受けられません</strong>（高所得者は対象外）。</p>
+        <p>佐藤さんの妻・美咲さん（パート年収95万円）は、給与所得控除65万円を引くと合計所得は30万円。58万円以下なので<strong>配偶者控除の対象</strong>、佐藤さん本人の所得も1,000万円以下なので満額<strong>38万円</strong>です。鈴木さんの妻・和子さん（収入なし＝合計所得0）も配偶者控除の要件は満たしますが、鈴木さん本人の合計所得は840万円（第5章）で1,000万円以下のため、こちらも配偶者控除の対象になります。</p>
+
+        <aside class="engineer-note"><span class="tag">ENGINEER'S NOTE — 配偶者控除は「本人×配偶者」の二次元テーブル</span>
+        配偶者（特別）控除額は<strong>本人の合計所得区分（900万・950万・1,000万の3段階）×配偶者の合計所得区分</strong>の二次元マトリクスで決まります。単一の閾値ではなく表引きにすること。実装で事故りやすいのは、(1) <strong>「配偶者控除」と「配偶者特別控除」を別物のように分岐させると境界（合計所得58万円）で不整合が出る</strong>——連続した1枚の表として持つほうが安全。(2) 本人所得1,000万円超で問答無用にゼロになるゲートを忘れない。(3) 「収入」で判定するのか「合計所得」で判定するのかを画面・内部で統一する（申告書はしばしば収入見積で書かせ、内部で所得へ換算する）。年度で閾値（48万→58万→62万）が動くので、判定表そのものを年度パラメータ化します。</aside>
+
+        <h3>特定親族特別控除 —— 令和7年の目玉、「大学生バイトの壁」対策</h3>
+        <p>令和7年に新設された<a class="term" href="#g-tokuteishinzoku">特定親族特別控除</a>は、田中由紀さんのようなケースの主役です。従来、19〜22歳の子は特定扶養親族として63万円という大きな控除の対象でした。ところが子のバイト収入が増えて合計所得58万円（給与123万円）を1円でも超えると、特定扶養控除が<strong>まるごと消えて63万円の崖</strong>が生じていました。これが「学生は稼ぎすぎると親の税負担が跳ね上がる（＝働き控えの原因）」という、いわゆる大学生年代の壁です。</p>
+        <p>特定親族特別控除は、この崖を配偶者特別控除と同じ発想でならす制度です。対象は<strong>特定親族</strong>——19歳以上23歳未満で、生計を一にし、合計所得金額が<strong>58万円超123万円以下</strong>（給与収入なら123万円超188万円以下）の親族。控除額は所得に応じて段階的に減り、最高63万円です。</p>
+        <div class="scroll-x"><table>
+          <tr><th>特定親族の合計所得金額</th><th>控除額</th></tr>
+          <tr><td>58万円超 85万円以下</td><td>63万円</td></tr>
+          <tr><td>85万円超 90万円以下</td><td>61万円</td></tr>
+          <tr><td>90万円超 95万円以下</td><td>51万円</td></tr>
+          <tr><td>95万円超 100万円以下</td><td>41万円</td></tr>
+          <tr><td>100万円超 105万円以下</td><td>31万円</td></tr>
+          <tr><td>105万円超 110万円以下</td><td>21万円</td></tr>
+          <tr><td>110万円超 115万円以下</td><td>11万円</td></tr>
+          <tr><td>115万円超 120万円以下</td><td>6万円</td></tr>
+          <tr><td>120万円超 123万円以下</td><td>3万円</td></tr>
+        </table></div>
+        <p>田中さんの弟・翔さん（20歳・大学生・バイト年収150万円）で確かめましょう<span class="year-note">令和7年分</span>。給与150万円 − 給与所得控除65万円 ＝ 合計所得<strong>85万円</strong>。これは「58万円超123万円以下」で、扶養控除（58万円以下が条件）は使えませんが特定親族特別控除の対象。合計所得85万円は表の「58万円超85万円以下」に収まるので、田中さんは<strong>63万円</strong>を控除できます。もし翔さんがもっと稼いで合計所得100万円になれば控除は41万円へ——このように崖ではなく坂で調整されます。年末調整では専用の「特定親族特別控除申告書」の提出が必要です（第12章）。</p>
+        <p class="year-note-block year-note">鈴木さんの長男・大輔さん（21歳）はバイト等がなく合計所得58万円以下なら、従来どおり<strong>特定扶養控除63万円</strong>（前掲の扶養控除表）の対象です。特定扶養控除（所得58万円以下）と特定親族特別控除（所得58万円超123万円以下）は<strong>所得帯で棲み分け</strong>、両方同時には適用されません。</p>
+
+        <div class="check-wrap"><h3>理解度チェック</h3>
+          <details class="check"><summary>Q1. 「合計所得金額58万円以下」は、給与収入だけの人なら年収いくらに相当しますか（令和7年分）。</summary><p>給与所得控除の最低保障が65万円なので、58万 ＋ 65万 ＝ <strong>給与収入123万円</strong>に相当します。旧制度（所得48万・控除55万）では103万円でした。これが「103万円の壁が123万円へ動いた」の内訳です。</p></details>
+          <details class="check"><summary>Q2. 大学生の子のバイト収入が増えて合計所得が58万円を超えると、従来は何が問題でしたか。令和7年の制度はそれをどう解決しましたか。</summary><p>従来は合計所得58万円（給与123万円）を超えた瞬間に特定扶養控除63万円がまるごと消える「崖」が生じ、働き控えの原因になっていました。令和7年創設の<strong>特定親族特別控除</strong>が、所得58万円超123万円以下の範囲で控除額を段階的に減らし、崖を坂に変えました。</p></details>
+          <details class="check"><summary>Q3. 田中さんの弟・翔さん（20歳・バイト年収150万円）について、田中さんが受けられる控除の種類と額は（令和7年分）。</summary><p>翔さんの合計所得は150万 − 65万 ＝ 85万円。58万円超なので扶養控除は不可、<strong>特定親族特別控除</strong>の対象。合計所得85万円は「58万円超85万円以下」区分で控除額<strong>63万円</strong>です。</p></details>
+        </div>
+      </section>
+
+      <section class="chapter" id="ch7">
+        <h2>第7章　人的控除(2) 本人の事情</h2>
+        <div class="chap-map"><strong>この章の位置づけ：</strong>前章は「養う家族」に着目した控除でした。本章は同じ人的控除でも<strong>本人（や本人の状況）そのもの</strong>に着目する控除——基礎控除、障害者控除、寡婦控除・ひとり親控除、勤労学生控除を扱います。とくに<strong>基礎控除</strong>は令和7年改正で一律48万円から所得に応じた階段構造へと大きく変わり、いわゆる「103万円→160万円の壁」の主役になりました。ここが今回の改正の震源地です。</div>
+
+        <h3>基礎控除 —— 令和7年改正の震源</h3>
+        <p><a class="term" href="#g-kiso">基礎控除</a>は、誰にでも認められる「最低限の生活費には課税しない」ための控除です。長らく一律48万円でしたが、令和7年改正で<strong>合計所得金額に応じた階段構造</strong>になり、低〜中所得層で大きく引き上げられました。第5章の給与所得控除の引き上げ（55万→65万）と<strong>セット</strong>で「課税最低限」を押し上げたのがこの改正の核心です。</p>
+        <div class="scroll-x"><table>
+          <tr><th>合計所得金額</th><th>基礎控除額（令和7年分）</th><th>（旧・一律）</th></tr>
+          <tr><td>132万円以下</td><td><strong>95万円</strong></td><td>48万円</td></tr>
+          <tr><td>132万円超 336万円以下</td><td>88万円</td><td>48万円</td></tr>
+          <tr><td>336万円超 489万円以下</td><td>68万円</td><td>48万円</td></tr>
+          <tr><td>489万円超 655万円以下</td><td>63万円</td><td>48万円</td></tr>
+          <tr><td>655万円超 2,350万円以下</td><td>58万円（本則）</td><td>48万円</td></tr>
+          <tr><td>2,350万円超 2,400万円以下</td><td>48万円</td><td>48万円</td></tr>
+          <tr><td>2,400万円超 2,450万円以下</td><td>32万円</td><td>32万円</td></tr>
+          <tr><td>2,450万円超 2,500万円以下</td><td>16万円</td><td>16万円</td></tr>
+          <tr><td>2,500万円超</td><td>0円</td><td>0円</td></tr>
+        </table></div>
+        <p class="year-note-block year-note">重要：合計所得132万円超〜655万円以下の上乗せ（88／68／63万円）は<strong>令和7・8年分限定の特例</strong>です。令和9年分以後は本則58万円へ段階調整される予定。また令和8年分は本則が58万→<strong>62万円</strong>に引き上げ（物価スライド）。「いくら控除できるか」は<strong>適用年で必ず変わる</strong>ので、実装では年度を必ずキーにします。本章の計算例は令和7年分。</p>
+        <p>「160万円の壁」との関係を整理します。給与収入160万円の人は、給与所得控除65万円を引くと合計所得95万円。これは基礎控除の「132万円以下＝95万円」区分。給与所得95万円から基礎控除95万円を引くと課税所得はゼロ——つまり<strong>給与収入160万円までは所得税がかからない</strong>のが令和7年分の姿で、これが「103万円の壁が160万円へ」と言われる正体です（令和8年分はさらに178万円へ。第22章）。</p>
+        <p>ペルソナの基礎控除を確認します<span class="year-note">令和7年分</span>。佐藤さん（合計所得452万円 → 「336万超489万以下」）は<strong>68万円</strong>。田中さん（332万円 → 「132万超336万以下」）は<strong>88万円</strong>。鈴木さん（840万円 → 「655万超2,350万以下」）は本則の<strong>58万円</strong>。同じ基礎控除でも人によって額が違う、というのが新しい常識です。</p>
+
+        <aside class="engineer-note"><span class="tag">ENGINEER'S NOTE — 基礎控除は「所得の関数」になった</span>
+        かつて定数だった基礎控除が、令和7年から<strong>合計所得金額を入力とする階段関数</strong>になりました。実装上の注意は3つ。(1) <strong>入力は本人の「合計所得金額」</strong>——給与所得だけの人は給与所得がそれに当たりますが、他に所得がある人は合算後の値。第5章の所得金額調整控除を引いた後の給与所得を使う点にも注意。(2) <strong>区分の境界（132万・336万・489万・655万…）は「以下／超」を厳密に</strong>。境界1円のズレが控除額を数十万円動かします。(3) <strong>特例（R7・R8）と本則、さらにR8の62万への引き上げが年度で交差する</strong>ので、基礎控除テーブルは年度パラメータとして丸ごと差し替えられる構造にしておくこと。「48万円決め打ち」の旧実装が残っていないか要監査です。</aside>
+
+        <h3>障害者控除 —— 本人・家族の障害への配慮</h3>
+        <p><a class="term" href="#g-shougaisha">障害者控除</a>は、本人・同一生計配偶者・扶養親族が障害者である場合の控除です。ここで大事なのは、<strong>16歳未満の子でも障害者控除は受けられる</strong>点。扶養控除は16歳未満は対象外でしたが、障害者控除は別枠なので年齢下限がありません。</p>
+        <div class="scroll-x"><table>
+          <tr><th>区分</th><th>控除額</th></tr>
+          <tr><td>障害者</td><td>27万円</td></tr>
+          <tr><td>特別障害者</td><td>40万円</td></tr>
+          <tr><td>同居特別障害者（特別障害者と同居して生計を一に）</td><td>75万円</td></tr>
+        </table></div>
+
+        <h3>寡婦控除・ひとり親控除 —— 離婚・死別・未婚のひとり親へ</h3>
+        <p>かつての寡婦（寡夫）控除は、婚姻歴の有無や男女で扱いが分かれ不公平とされました。令和2年改正で整理され、<strong>婚姻歴を問わない「ひとり親控除」</strong>が新設されて現在の形になっています。</p>
+        <div class="scroll-x"><table>
+          <tr><th>控除</th><th>主な要件</th><th>控除額</th></tr>
+          <tr><td><a class="term" href="#g-hitorioya">ひとり親控除</a></td><td>現に婚姻していない等で、生計を一にする子（その子の合計所得58万円以下）があり、本人の合計所得500万円以下。<strong>男女を問わない</strong></td><td>35万円</td></tr>
+          <tr><td><a class="term" href="#g-kafu">寡婦控除</a></td><td>ひとり親に該当せず、夫と離婚・死別後に婚姻していない女性で、合計所得500万円以下（離婚の場合は扶養親族が必要）</td><td>27万円</td></tr>
+        </table></div>
+        <p>ポイントは、(1) <strong>ひとり親控除は未婚のひとり親も対象・男女不問</strong>で額も大きい（35万円）、(2) どちらも<strong>本人の合計所得500万円以下</strong>の上限がある、(3) 「子があるひとり親」はまずひとり親控除を検討し、それに当たらない女性が寡婦控除、という順序です。本書のペルソナはいずれも該当しませんが、実務では申告書の記載から本人の申告に基づいて判定します。</p>
+
+        <h3>勤労学生控除 —— 働きながら学ぶ本人へ</h3>
+        <p><a class="term" href="#g-kinrougakusei">勤労学生控除</a>は、本人が学生で、かつ自ら働いて得た所得がある場合の控除（27万円）です。要件は、本人の合計所得金額が<strong>85万円以下</strong><span class="year-note">令和7年分（旧75万円以下）</span>で、そのうち給与などの勤労による所得以外の所得が10万円以下であること。令和7年改正で所得要件が75万→85万円に引き上げられました（給与収入なら150万円以下に相当）。これは学生本人が自分の税金を減らす控除で、その学生を扶養する親側の扶養控除・特定親族特別控除（第6章）とは別の話である点に注意してください。</p>
+
+        <aside class="engineer-note"><span class="tag">ENGINEER'S NOTE — 人的控除は「本人属性」と「所得上限ゲート」の組合せ</span>
+        本章の控除は、扶養控除のような家族の人数ではなく<strong>本人（または扶養親族）のフラグ</strong>で決まるものが多い。設計指針は、(1) 障害者・寡婦・ひとり親・勤労学生を<strong>それぞれ独立のboolean＋所得上限ゲート</strong>として持ち、控除額は年度テーブルから引く。(2) <strong>「ひとり親」と「寡婦」は排他</strong>（ひとり親優先）、両方立てない相互排他ルールを明示的に。(3) 所得上限（ひとり親・寡婦は500万円、勤労学生は85万円）や勤労学生の「その他所得10万円以下」の副条件を判定関数に含める。(4) 障害者控除は扶養控除と違い<strong>16歳未満でも適用</strong>——「扶養控除がゼロだから障害者控除もゼロ」と早合点する分岐バグに注意。判定基準日はいずれも12月31日時点です。</aside>
+
+        <div class="check-wrap"><h3>理解度チェック</h3>
+          <details class="check"><summary>Q1. 令和7年分で、合計所得金額が「132万円以下」の人の基礎控除はいくらですか。旧制度と比べてどうですか。</summary><p><strong>95万円</strong>です（旧制度は一律48万円）。給与所得控除の最低65万円と合わせ、給与収入160万円まで所得税がかからない構造（＝「160万円の壁」）をつくっています。ただしこの上乗せは令和7・8年分限定の特例です。</p></details>
+          <details class="check"><summary>Q2. 16歳未満の子は扶養控除の対象外でしたが、その子が障害者の場合、障害者控除は受けられますか。</summary><p>受けられます。障害者控除は扶養控除とは別枠で<strong>年齢の下限がない</strong>ため、16歳未満の子でも適用できます（障害者27万円・特別障害者40万円・同居特別障害者75万円）。</p></details>
+          <details class="check"><summary>Q3. 「ひとり親控除」と旧来の寡婦控除の最大の違いは何ですか。</summary><p>ひとり親控除は<strong>婚姻歴を問わず（未婚のひとり親も対象）、男女を問わない</strong>点です（控除額35万円、本人の合計所得500万円以下・生計を一にする子ありが要件）。令和2年改正で不公平を整理して新設されました。</p></details>
+        </div>
+      </section>
+
+      <section class="chapter" id="ch8">
+        <h2>第8章　物的控除</h2>
+        <div class="chap-map"><strong>この章の位置づけ：</strong>人的控除（第6・7章）が「誰の事情か」で決まったのに対し、本章の<strong>物的控除</strong>は「いくら支払ったか」で決まります。社会保険料控除、生命保険料控除、地震保険料控除、小規模企業共済等掛金控除（iDeCo）。これらは第3章で見た「月次の源泉徴収では捉えきれず、年末に控除証明書で初めて申告する」還付の主役たちです。とくに生命保険料控除は<strong>新旧2つの制度</strong>が併存し計算が複雑なので、表で丁寧に押さえます。</div>
+
+        <h3>社会保険料控除 —— 全額が所得控除</h3>
+        <p><a class="term" href="#g-shakaihoken">社会保険料控除</a>は、本人や生計を一にする配偶者・親族の社会保険料（健康保険・厚生年金・国民年金・介護保険・雇用保険など）を支払った場合、<strong>その全額</strong>が所得控除になる制度です。上限も計算式もなく、払った実額がまるごと引けるのが特徴。会社員は毎月の給与から天引きされる分が自動的に対象になり、源泉徴収簿に集計されます（第13章）。</p>
+        <p>年末調整で追加申告が要るのは、<strong>給与天引き以外に自分で払った分</strong>です。典型例は、生計を一にする大学生の子や親の<strong>国民年金保険料を本人が払ったケース</strong>。この場合は「社会保険料（国民年金保険料等）控除証明書」の添付が必要です。全額控除なので、金額の大きい国民年金などは還付インパクトが大きくなります。</p>
+
+        <h3>小規模企業共済等掛金控除（iDeCo）—— これも全額控除</h3>
+        <p><a class="term" href="#g-shoukibo">小規模企業共済等掛金控除</a>は、iDeCo（個人型確定拠出年金）や小規模企業共済の掛金を対象とし、こちらも<strong>支払った全額</strong>が所得控除になります。iDeCoが「節税になる」と言われるのはこの控除のためです。佐藤健太さんはiDeCoに月2.3万円拠出しているので、年間 <code>2.3万 × 12 ＝ 27.6万円</code> がまるごと所得控除。掛金は本人名義のものだけが対象で、「小規模企業共済等掛金払込証明書」を添付します。社会保険料控除とは別枠なので混同しないこと。</p>
+
+        <h3>生命保険料控除 —— 新旧制度の併存に注意</h3>
+        <p><a class="term" href="#g-seimeihoken">生命保険料控除</a>は本章の最難関です。難しさの原因は、<strong>契約時期で「新制度」と「旧制度」に分かれ、計算式も枠組みも違う</strong>ことにあります。境界は<strong>平成24年（2012年）1月1日</strong>。それ以後の契約が新制度、以前が旧制度です。</p>
+        <div class="scroll-x"><table>
+          <tr><th></th><th>新制度（H24.1.1以後契約）</th><th>旧制度（H23.12.31以前契約）</th></tr>
+          <tr><td>枠（区分）</td><td>一般生命／介護医療／個人年金の<strong>3枠</strong></td><td>一般生命／個人年金の<strong>2枠</strong></td></tr>
+          <tr><td>各枠の上限</td><td>各4万円</td><td>各5万円</td></tr>
+          <tr><td>合計上限</td><td colspan="2" style="text-align:center"><strong>3枠・2枠あわせて所得税で12万円まで</strong></td></tr>
+        </table></div>
+        <p>各枠の控除額は、その枠に払った年間保険料を次の計算式に当てはめて求めます<span class="year-note">所得税</span>。</p>
+        <div class="scroll-x"><table>
+          <tr><th>新制度（1枠あたり・上限4万円）</th><th>旧制度（1枠あたり・上限5万円）</th></tr>
+          <tr><td>2万円以下：全額</td><td>2.5万円以下：全額</td></tr>
+          <tr><td>2万円超4万円以下：×1/2 ＋ 1万円</td><td>2.5万円超5万円以下：×1/2 ＋ 1.25万円</td></tr>
+          <tr><td>4万円超8万円以下：×1/4 ＋ 2万円</td><td>5万円超10万円以下：×1/4 ＋ 2.5万円</td></tr>
+          <tr><td>8万円超：一律4万円</td><td>10万円超：一律5万円</td></tr>
+        </table></div>
+        <p>枠ごとに計算し、それを合算しますが、<strong>全体の合計は12万円が上限</strong>です。同じ枠に新旧両方の契約がある場合は、「新のみ」「旧のみ」「新旧合算（各枠上限4万円）」のうち<strong>最も有利な計算を選べる</strong>という細則もあります。</p>
+        <p>計算例で慣れましょう。佐藤さん（新制度）が一般生命に年6万円、介護医療に年4万円払ったとします<span class="year-note">令和7年分</span>。一般生命：6万円は「4万超8万以下」なので <code>6万 × 1/4 ＋ 2万 ＝ 3.5万円</code>。介護医療：4万円は「2万超4万以下」なので <code>4万 × 1/2 ＋ 1万 ＝ 3万円</code>。合計 <strong>6.5万円</strong>（12万円の上限内）。田中さん（新制度・一般生命1本のみ、年3万円）は <code>3万 × 1/2 ＋ 1万 ＝ 2.5万円</code>。鈴木さんは旧制度契約が一部残るので、旧制度の式（各枠上限5万円）と新制度をあわせ、有利な組合せで最大12万円まで、という判定になります。</p>
+
+        <h3>地震保険料控除 —— 経過措置の旧長期損害保険に注意</h3>
+        <p><a class="term" href="#g-jishin">地震保険料控除</a>は、住宅・家財の地震保険料が対象です。計算はシンプルで、支払った地震保険料の<strong>全額（上限5万円）</strong>。ただし、平成18年末までに契約した一定の<strong>長期損害保険料</strong>には経過措置があり、次の別枠計算が使えます。</p>
+        <div class="scroll-x"><table>
+          <tr><th>地震保険料</th><th>旧長期損害保険料（経過措置）</th></tr>
+          <tr><td>支払額の全額（上限5万円）</td><td>1万円以下：全額／1万円超2万円以下：×1/2 ＋ 5千円／2万円超：一律1.5万円</td></tr>
+          <tr><td colspan="2" style="text-align:center">両方ある場合の<strong>合計上限は5万円</strong></td></tr>
+        </table></div>
+        <p>佐藤さんが地震保険料を年3万円払っていれば、全額の<strong>3万円</strong>が控除。1つの契約に地震保険と旧長期損害保険の両方の性質がある場合は、いずれか一方を選択します。</p>
+
+        <aside class="engineer-note"><span class="tag">ENGINEER'S NOTE — 生命保険料控除は「枠 × 制度」の二層計算</span>
+        物的控除は「証明書の金額を式に入れる」だけに見えて、生命保険料控除だけは実装が重い。構造を分解すると、(1) <strong>枠（一般・介護医療・個人年金）ごとに計算</strong>し、(2) 各枠で<strong>新制度・旧制度それぞれの式を適用</strong>して、(3) 新旧が混在する枠は「新のみ・旧のみ・新旧合算（枠上限4万）」の<strong>有利選択</strong>を行い、(4) 3枠を合算して<strong>全体上限12万円でクランプ</strong>する——という四段構え。テストは各式の境界（2万・4万・8万／2.5万・5万・10万）と、有利選択で結果が入れ替わる組合せを必ず用意します。円未満の端数は各控除の計算過程で切り上げる（1円未満切り上げ）ルールがある点も要確認。社会保険料控除・iDeCoは全額控除で式がない代わり、<strong>「給与天引き分（源泉徴収簿から自動集計）」と「本人が別途申告する分」の二重計上・計上漏れ</strong>に注意が必要です。</aside>
+
+        <div class="check-wrap"><h3>理解度チェック</h3>
+          <details class="check"><summary>Q1. 社会保険料控除と小規模企業共済等掛金控除（iDeCo）の、金額面での共通点は何ですか。</summary><p>どちらも<strong>支払った全額が所得控除</strong>になる点です（上限や計算式による圧縮がない）。ただし別枠の控除で、iDeCoは本人名義の掛金のみが対象、社会保険料控除は生計を一にする家族の分も対象になります。</p></details>
+          <details class="check"><summary>Q2. 生命保険料控除の新制度と旧制度は、境界となる契約日と枠の数がどう違いますか。</summary><p>境界は<strong>平成24年（2012年）1月1日</strong>。以後が新制度で「一般・介護医療・個人年金」の<strong>3枠</strong>（各上限4万円）、以前が旧制度で「一般・個人年金」の<strong>2枠</strong>（各上限5万円）。いずれも所得税では合計12万円が上限です。</p></details>
+          <details class="check"><summary>Q3. 新制度で一般生命保険料を年6万円払った場合の控除額は（所得税）。</summary><p>6万円は「4万円超8万円以下」の区分なので、6万 × 1/4 ＋ 2万 ＝ <strong>3.5万円</strong>です。</p></details>
+        </div>
+      </section>
+
+      <section class="chapter" id="ch9">
+        <h2>第9章　税額控除</h2>
+        <div class="chap-map"><strong>この章の位置づけ：</strong>ここまでの控除はすべて「所得から引く」所得控除でした。本章の<strong>税額控除</strong>は、第1章で強調したとおり<strong>税額そのものから直接引く</strong>——だから同じ金額でも効き目が桁違いに強い。年末調整で扱う税額控除の代表が<a class="term" href="#g-jutaku">住宅借入金等特別控除</a>（住宅ローン控除）です。なぜ初年だけ確定申告で2年目以降は年末調整でできるのか、その仕組みを「残高証明」を軸に解きほぐします。フロー図でいえば④算出所得税額 → ⑤基準所得税額の段の話です。</div>
+
+        <h3>所得控除との効き方の違い（再確認）</h3>
+        <p>第1章の表をもう一度思い出してください。税率20%の人にとって「10万円の所得控除」は2万円の減税にしかなりませんが、「10万円の税額控除」は<strong>まるまる10万円の減税</strong>です。住宅ローン控除は年間で数十万円規模になり得るため、多くの人にとって年末調整で最もインパクトの大きい項目になります。「年末調整で大きく戻ってきた」の主因は、たいていこの住宅ローン控除です。</p>
+
+        <h3>住宅ローン控除のしくみ</h3>
+        <p>住宅ローン控除は、住宅ローンを組んでマイホームを取得・入居した人が、<strong>年末のローン残高に一定率を掛けた額</strong>を、原則13年間（新築の認定住宅等の近年の例）にわたり所得税額から控除できる制度です。近年取得分の控除率は<strong>年末残高 × 0.7%</strong>が基本です。</p>
+        <div class="scroll-x"><table>
+          <tr><td>住宅ローン控除額 ＝ 年末のローン残高 × 控除率（近年は0.7%）</td></tr>
+        </table></div>
+        <p class="year-note-block year-note">控除率・控除期間・借入限度額・所得要件（合計所得2,000万円以下など）・住宅の環境性能による上限は、<strong>取得年や住宅の種類で細かく異なります</strong>。かつては1%・10年でしたが、令和4年以降の取得分は原則0.7%・13年（住宅性能で借入限度額が変動）。本書では制度の骨格に絞り、具体的な率・限度額は取得年ごとの国税庁資料で確認してください。</p>
+        <p>佐藤健太さんは2年前にマイホームを取得し、いま住宅ローン控除の2年目以降にあたります。仮に年末のローン残高が3,000万円で控除率0.7%なら、<code>3,000万 × 0.7% ＝ 21万円</code>が税額から直接引かれます（借入限度額等の範囲内の場合）。第10章で佐藤さんの税額を仕上げるとき、この税額控除が④→⑤の段でどう効くかを追います。</p>
+
+        <h3>なぜ初年は確定申告、2年目以降は年末調整なのか</h3>
+        <p>第4章でも触れたこの棲み分けを、税額控除の視点から掘り下げます。<strong>初年（1年目）は必ず本人が確定申告</strong>しなければなりません。理由は、初年は「本当にその住宅を取得し、そこに居住し、要件を満たすローンか」を税務署が実物の書類で確認する必要があるからです。登記事項証明書、売買・請負契約書、借入金の年末残高証明書などを添えて申告し、税務署が適用の可否と控除枠を確定させます。会社に真偽判定をさせるには重すぎる——だから初年は確定申告に委ねられているのです。</p>
+        <p>いったん初年の確定申告で税務署が適用を認めると、2年目以降は話が一気に軽くなります。税務署は、残りの控除可能年分をまとめて記載した<strong>「年末調整のための（特定増改築等）住宅借入金等特別控除証明書」</strong>を本人に交付します（初回の申告後にまとめて送付）。本人はこれと、金融機関が発行する<strong>「住宅取得資金に係る借入金の年末残高等証明書」</strong>を勤務先に提出するだけ。会社は「税務署が既にお墨付きを与えた控除を、今年の残高に応じて計算するだけ」でよくなるので、年末調整で処理できるのです。</p>
+        <div class="flow-diagram"><div class="flow-v" style="max-width:36rem">
+          <div class="flow-stage">初年：本人が確定申告<span class="sub">登記事項・契約書・残高証明で税務署が適用可否を確定</span></div>
+          <div class="flow-op"><span class="times">税務署 → 本人</span>残り年分の「年末調整のための控除証明書」を交付</div>
+          <div class="flow-stage">2年目以降：勤務先に2枚を提出<span class="sub">①税務署の控除証明書 ＋ ②金融機関の年末残高証明書</span></div>
+          <div class="flow-op"><span class="minus">会社が年末調整で</span>残高 × 控除率を税額から控除</div>
+          <div class="flow-stage result">住宅ローン控除を年末調整で適用</div>
+        </div></div>
+
+        <h3>控除しきれないときはどうなるか</h3>
+        <p>住宅ローン控除は税額から引く制度なので、<strong>その年の所得税額より控除額が大きいと、引ききれない部分が出ます</strong>。所得税は0円が下限で、マイナスの税金（給付）にはなりません。ただし引ききれなかった分は、一定の範囲で<strong>翌年度の住民税から控除</strong>される仕組みがあり、完全に切り捨てにはなりません（住民税との連携は第16章）。ここは「所得控除にはない、税額控除ならではの論点」として押さえておきましょう。</p>
+
+        <aside class="engineer-note"><span class="tag">ENGINEER'S NOTE — 税額控除はパイプラインの「合流点」が違う</span>
+        実装で最も重要なのは、住宅ローン控除を<strong>所得控除の配列に混ぜない</strong>ことです（第1章のNOTE再掲）。所得控除は「課税所得を出す前」に合算し、税額控除は「算出所得税額を出した後」に引く——合流点が違います。加えて住宅ローン控除特有の実装ポイント。(1) <strong>控除額の入力は原則「税務署の控除証明書に記載の控除可能額の計算方法 × 金融機関の年末残高」</strong>で、率・限度額は取得年ごとのパラメータ。プロダクトは取得年をキーに率・限度額テーブルを引く設計に。(2) <strong>算出所得税額での頭打ち</strong>——控除額はその年の所得税額が上限で、引ききれない分の住民税への繰り越しは年末調整（所得税）側では扱わず、給与支払報告書経由で市区町村へ渡る（第16章）。(3) 復興特別所得税との順序に注意——住宅ローン控除は<strong>復興特別所得税を上乗せする前の所得税額から</strong>引きます（第10章の端数・順序で詳述）。</aside>
+
+        <div class="check-wrap"><h3>理解度チェック</h3>
+          <details class="check"><summary>Q1. 住宅ローン控除の控除額は、おおまかにどう計算しますか。</summary><p><strong>年末のローン残高 × 控除率</strong>（近年の取得分は原則0.7%）で計算し、税額から直接引きます。控除率・期間・借入限度額は取得年や住宅の種類で異なります。</p></details>
+          <details class="check"><summary>Q2. なぜ初年は確定申告が必要で、2年目以降は年末調整でできるのですか。</summary><p>初年は住宅の取得・居住・ローン要件を登記事項証明書や契約書で税務署が実物確認する必要があるため確定申告が必須。いったん認められると税務署が残り年分の控除証明書を交付するので、2年目以降は本人がそれと金融機関の年末残高証明書を勤務先に出すだけで、会社が年末調整で処理できます。</p></details>
+          <details class="check"><summary>Q3. 住宅ローン控除額がその年の所得税額より大きいとき、余った分はどうなりますか。</summary><p>所得税は0円が下限で給付にはなりませんが、引ききれなかった分は一定範囲で<strong>翌年度の住民税から控除</strong>されます（第16章の住民税連携）。</p></details>
+        </div>
+      </section>
+
+      <section class="chapter" id="ch10">
+        <h2>第10章　税額計算の仕上げ</h2>
+        <div class="chap-map"><strong>この章の位置づけ：</strong>第5〜9章で集めた部品——給与所得、所得控除の数々、税額控除——を、いよいよ第1章の背骨に沿って組み上げます。<strong>課税給与所得金額 → 算出所得税額 → 年調所得税額 → 年調年税額</strong>という最後の直線を、端数処理のルールごと確定させる章です。ここで<strong>復興特別所得税</strong>も初めて明示的に登場します。第2部の総仕上げとして、佐藤さんと鈴木さんの数字を最後まで走らせます。</div>
+
+        <h3>仕上げのフローと4つの端数処理</h3>
+        <p>年末調整の税額計算は、次の順序で進みます。各段に<strong>決められた丸め（端数処理）</strong>があり、順序も丸め位置も動かせない「仕様」です。</p>
+        <div class="flow-diagram"><div class="flow-v" style="max-width:38rem">
+          <div class="flow-stage">調整後の給与所得 − 所得控除の合計</div>
+          <div class="flow-op"><span class="minus">① 1,000円未満切り捨て</span></div>
+          <div class="flow-stage">課税給与所得金額<span class="sub">速算表に当てる対象</span></div>
+          <div class="flow-op"><span class="times">× 速算表の税率 − 控除額</span></div>
+          <div class="flow-stage">算出所得税額</div>
+          <div class="flow-op"><span class="minus">− 住宅ローン控除（税額控除）</span></div>
+          <div class="flow-stage">年調所得税額<span class="sub">＝ 復興特別所得税を乗せる前の額。0円が下限</span></div>
+          <div class="flow-op"><span class="times">② × 102.1%（復興特別所得税2.1%を上乗せ）</span></div>
+          <div class="flow-op"><span class="minus">③ 100円未満切り捨て</span></div>
+          <div class="flow-stage result">年調年税額<span class="sub">その年に納めるべき所得税＋復興特別所得税の確定額</span></div>
+        </div></div>
+        <p>復興特別所得税は、東日本大震災の復興財源として<strong>令和19年（2037年）まで</strong>、基準となる所得税額に一律<strong>2.1%</strong>を上乗せするものです。年末調整では、住宅ローン控除まで引いた<strong>年調所得税額に102.1%を掛けて</strong>一体で計算し、<strong>100円未満を切り捨て</strong>た額が年調年税額になります。最後に、この年調年税額と「毎月源泉徴収してきた合計」を突き合わせ、差額を還付・追徴します（第3章の式）。なお④として、その過不足額の精算にも実務上の端数処理が絡みますが、本章では年調年税額の確定までを扱います。</p>
+
+        <h3>計算例A：鈴木三郎さん（フルコース）</h3>
+        <p>すべての段が登場する鈴木さん（給与収入1,050万円）を最後まで走らせます<span class="year-note">令和7年分</span>。第5〜9章で求めた部品を並べます。</p>
+        <div class="scroll-x"><table>
+          <tr><th>段</th><th>内容</th><th>金額</th></tr>
+          <tr><td>給与所得</td><td>1,050万 − 給与所得控除195万（上限）</td><td>855万円</td></tr>
+          <tr><td>所得金額調整控除</td><td>(1,000万 − 850万) × 10%（21歳の子あり）</td><td>− 15万円</td></tr>
+          <tr><td>調整後の給与所得</td><td></td><td>840万円</td></tr>
+          <tr><td colspan="2">所得控除：基礎58万＋配偶者38万＋特定扶養（大輔）63万＋同居老親（ハル）58万＋社会保険料120万＋生命保険料10万＋地震保険5万</td><td>− 352万円</td></tr>
+          <tr><td>①課税給与所得金額</td><td>840万 − 352万 ＝ 488万（1,000円未満切捨済）</td><td><strong>4,880,000円</strong></td></tr>
+          <tr><td>算出所得税額</td><td>4,880,000 × 20% − 427,500（速算表）</td><td><strong>548,500円</strong></td></tr>
+          <tr><td>− 税額控除</td><td>住宅ローン完済のためなし</td><td>0円</td></tr>
+          <tr><td>年調所得税額</td><td></td><td>548,500円</td></tr>
+          <tr><td>②③年調年税額</td><td>548,500 × 102.1% ＝ 560,018.5 → 100円未満切捨</td><td><strong>560,000円</strong></td></tr>
+        </table></div>
+        <p>鈴木さんの生命保険料・社会保険料などは第8章の考え方に沿った想定額です。ここで見てほしいのは<strong>金額そのものより順序と丸め</strong>。①で課税所得を1,000円未満切り捨て、速算表で算出税額を出し、②で2.1%を上乗せしてから③で100円未満切り捨て——この順序を1か所でも入れ替えると、最終額が数百円ずれます。</p>
+
+        <h3>計算例B：佐藤健太さん（税額控除で税額が消える）</h3>
+        <p>対照的に佐藤さん（給与収入620万円）を見ます<span class="year-note">令和7年分</span>。給与所得452万円から、基礎控除68万＋配偶者控除38万＋扶養控除（葵）38万＋社会保険料控除93万＋生命保険料控除6.5万＋地震保険料控除3万＋iDeCo27.6万＝<strong>所得控除計274.1万円</strong>を引くと、</p>
+        <div class="scroll-x"><table>
+          <tr><td>①課税給与所得金額</td><td>452万 − 274.1万 ＝ 1,779,000円（1,000円未満切捨済）</td></tr>
+          <tr><td>算出所得税額</td><td>1,779,000 × 5% ＝ 88,950円（速算表・控除額0）</td></tr>
+          <tr><td>− 住宅ローン控除</td><td>残高3,000万 × 0.7% ＝ 210,000円</td></tr>
+          <tr><td>年調所得税額</td><td>88,950 − 210,000 → <strong>0円</strong>（下限）</td></tr>
+          <tr><td>年調年税額</td><td>0円 × 102.1% ＝ <strong>0円</strong></td></tr>
+        </table></div>
+        <p>佐藤さんは税額控除（住宅ローン控除21万円）が算出所得税額8.9万円を上回り、<strong>年調所得税額が0円で頭打ち</strong>になりました。結果、その年の所得税・復興特別所得税はゼロ。毎月源泉徴収されてきた所得税は<strong>ほぼ全額が還付</strong>されます。これが第3章で「佐藤さんはなぜ還付されるのか」と言った構造の、数字での正体です。なお引ききれなかった住宅ローン控除（約12万円）は、一定範囲で翌年度の住民税から控除されます（第16章）。税額控除がいかに強力か——所得控除では決してこうはなりません——を実感してください。</p>
+
+        <aside class="engineer-note"><span class="tag">ENGINEER'S NOTE — 端数処理は「位置と方向」を仕様として固定する</span>
+        本章のパイプラインは、丸めの<strong>位置・方向・順序</strong>がすべて仕様で決まっています。実装チェックリスト：(1) <strong>課税給与所得金額は1,000円未満<span style="white-space:nowrap">切り捨て</span></strong>。(2) 算出所得税額は<strong>速算表（税率×課税所得 − 控除額）</strong>で求め、独自の累進ループを組まない。(3) 住宅ローン控除は<strong>復興特別所得税を乗せる前</strong>に引き、<strong>年調所得税額は0円が下限</strong>（マイナス＝給付にしない）。(4) <strong>年調年税額 ＝ 年調所得税額 × 102.1% の結果を100円未満切り捨て</strong>——2.1%を先に別計算して足すのではなく102.1%を一括で掛ける。浮動小数点で <code>× 1.021</code> すると誤差が出るので、整数演算（× 1021 ÷ 1000 など）で処理し、最後に100円未満を落とす。(5) これらの定数（1,000円・100円・2.1%）は理論上は安定的だが、税率や速算表の控除額は改正され得るので年度テーブルから引く。境界値（課税所得が速算表の区切りにちょうど乗る、税額控除が算出税額と一致する等）のテストを必ず用意します。丸めを1か所ずらすだけで全ユーザーの年税額がずれ、還付額の集計・住民税連携まで波及します。</aside>
+
+        <h3>第2部のまとめ —— 部品が地図に収まった</h3>
+        <p>第2部を振り返ると、第1章で描いた<strong>収入 → 所得 → 課税所得 → 税額</strong>の各段に、具体的な部品を差し込んできました。給与所得控除（第5章）で「所得」を、人的・物的控除（第6〜8章）で「課税所得」を、税額控除（第9章）と復興特別所得税（本章）で「税額」を——それぞれ精密化したわけです。次の第3部では、この計算を実際に回すための<strong>申告書・帳票・実務の流れ</strong>へ進みます。ここまでの計算の意味がわかっていれば、「あの帳票はこの段の入力を集めるためにある」と読めるはずです。</p>
+
+        <div class="check-wrap"><h3>理解度チェック</h3>
+          <details class="check"><summary>Q1. 課税給与所得金額と年調年税額の端数処理（丸め）は、それぞれどうしますか。</summary><p>課税給与所得金額は<strong>1,000円未満切り捨て</strong>、年調年税額は年調所得税額に102.1%を掛けた結果を<strong>100円未満切り捨て</strong>です。</p></details>
+          <details class="check"><summary>Q2. 復興特別所得税はどう計算しますか。住宅ローン控除との順序に注意して説明してください。</summary><p>住宅ローン控除（税額控除）まで引いた<strong>年調所得税額に102.1%を掛けて</strong>一体で計算します（2.1%の上乗せ）。住宅ローン控除は<strong>復興特別所得税を乗せる前</strong>に引くので、順序は「算出所得税額 − 税額控除 → ×102.1% → 100円未満切捨」です。</p></details>
+          <details class="check"><summary>Q3. 課税給与所得金額が4,880,000円のとき、年調年税額はいくらですか（税額控除なし・令和7年分）。</summary><p>速算表で 4,880,000 × 20% − 427,500 ＝ 548,500円（算出＝年調所得税額）。× 102.1% ＝ 560,018.5円 → 100円未満切り捨てで<strong>560,000円</strong>です。</p></details>
+        </div>
+      </section>
+
+      <!-- ============ 第3部 ============ -->
+      <section class="part-cover" id="part3"><h2>第3部　手続きと帳票 — 実務の流れ</h2></section>
+
+      <section class="chapter" id="ch11">
+        <h2>第11章　年末調整の実務カレンダー</h2>
+        <div class="chap-map"><strong>この章の位置づけ：</strong>第2部までで「何を計算するか」を学びました。第3部はそれを<strong>いつ・誰が・どの書類で</strong>回すかの話です。年末調整は一つのイベントではなく、10月から翌1月まで続く一連の作業の連なり。この章ではその全体を時間軸で俯瞰し、以降の章（申告書＝第12章、帳票＝第13章）がカレンダーのどこに位置するかの地図を描きます。手続きの一つ一つに「なぜこの順番なのか」を対応づけて押さえましょう。</div>
+
+        <p>年末調整は「12月にやる作業」と思われがちですが、実際には<strong>秋の準備から翌年1月の行政提出まで</strong>続きます。しかも登場人物は会社（給与の支払者）だけではありません。<strong>従業員</strong>が申告書を出し、<strong>会社</strong>が計算・精算し、<strong>税務署と市区町村</strong>が結果を受け取る——この三者のリレーが期限で連結されているのが年末調整の実務です。まず全体像を一枚のタイムラインで見ます。</p>
+
+        <div class="scroll-x"><table>
+          <tr><th>時期</th><th>従業員の動き</th><th>会社の動き</th><th>行政の動き</th></tr>
+          <tr><td>10月頃</td><td>控除証明書（生命保険・地震保険・iDeCo・住宅ローン残高証明）が郵送で届き始める</td><td>申告書の様式を準備し、従業員へ配布・案内。年調ソフトの年度更新</td><td>—</td></tr>
+          <tr><td>11月〜12月上旬</td><td>申告書に記入し、控除証明書を添付して会社へ提出</td><td>申告書を回収・チェック。不備は差し戻し。源泉徴収簿を締める準備</td><td>—</td></tr>
+          <tr><td>12月（最終給与）</td><td>還付を受け取る／追徴を天引きされる</td><td>年税額を計算し、最終給与または賞与で過不足を精算</td><td>—</td></tr>
+          <tr><td>翌年1月10日（原則）まで</td><td>—</td><td>精算後の源泉所得税を国へ納付（納期特例なら1月20日まで）</td><td>税務署が源泉所得税を収納</td></tr>
+          <tr><td>翌年1月31日まで</td><td>源泉徴収票を受け取る</td><td>源泉徴収票を従業員へ交付。法定調書合計表・支払調書を税務署へ、給与支払報告書を市区町村へ提出</td><td>税務署（法定調書）・市区町村（住民税課税）が受領</td></tr>
+        </table></div>
+        <p class="year-note">令和8年分時点。納付期限が休日にあたる場合は翌開庁日にずれます。</p>
+
+        <h3>なぜこの順番なのか</h3>
+        <p>カレンダーの順序は恣意的ではなく、<strong>情報が確定していく順</strong>に並んでいます。第3章で見たとおり、生命保険料をいくら払ったか・扶養が最終的に何人かは年末にならないと確定しません。だから、</p>
+        <ul>
+          <li><strong>秋に証明書が出そろう</strong>のを待って、<strong>従業員が申告</strong>する（12章の申告書で情報を回収）。</li>
+          <li>情報がそろって初めて<strong>会社が実額の年税額を計算</strong>できる（13章の源泉徴収簿が作業台）。</li>
+          <li>計算が締まって初めて<strong>過不足を精算</strong>し、その結果を<strong>行政へ提出</strong>できる（源泉徴収票・給与支払報告書＝13章・16章）。</li>
+        </ul>
+        <p>つまりカレンダーは、第1章の「収入→所得→課税所得→税額」というパイプラインを、時間軸に引き伸ばしたものにほかなりません。上流（情報収集）が遅れれば下流（精算・提出）がすべてずれる——だから会社は10月から前倒しで動くのです。</p>
+
+        <h3>二つの「締め」——精算の締めと納付の締め</h3>
+        <p>実務で混同しやすいのが、12月の<strong>精算</strong>と1月の<strong>納付・提出</strong>という二つの締めです。12月の最終給与で従業員個人への過不足を清算しても、それで終わりではありません。会社は精算後の源泉所得税を<strong>翌年1月10日まで</strong>（源泉所得税の納期の特例＝半年まとめ払いを受けている小規模事業者は<strong>1月20日まで</strong>）に国へ納めます。さらに<strong>1月31日まで</strong>に源泉徴収票を本人へ、給与支払報告書を市区町村へ、法定調書を税務署へ提出します。個人への精算（12月）と行政への報告・納付（翌1月）は別の締切だと切り分けておきましょう。</p>
+
+        <aside class="engineer-note"><span class="tag">ENGINEER'S NOTE — カレンダーはステートマシンで表現する</span>
+        年末調整プロダクトのバックボーンは、このカレンダーを<strong>従業員ごとのステートマシン</strong>として持つことです。<code>未着手 → 申告書提出済 → 会社チェック済 → 差し戻し → 計算確定 → 精算済 → 帳票交付済</code>のような状態遷移で管理し、各遷移に期限（deadline）を紐づけます。設計上の勘所は3つ。(1) <strong>締切は年度パラメータ</strong>——1月10日/20日/31日は制度で決まっていても、土日祝でずれるので営業日カレンダーを別データとして持つ（第26章）。(2) <strong>個人精算の締め</strong>と<strong>行政提出の締め</strong>は別の状態遷移として分離する。前者は給与計算、後者は法定調書・給与支払報告書の生成という別ドメインへつながる。(3) <strong>差し戻しループ</strong>を一級市民として設計する——申告書チェックで不備が出れば「提出済→差し戻し→再提出」を何度も回れるようにし、期限との競合（締切間際の差し戻し）をアラートで可視化する。締切を過ぎた従業員を検出して督促する仕組みは、実務で最も価値の出る機能の一つです。</aside>
+
+        <div class="check-wrap"><h3>理解度チェック</h3>
+          <details class="check"><summary>Q1. 年末調整の申告書提出が11月〜12月上旬に集中するのはなぜですか。</summary><p>生命保険料・地震保険料・住宅ローン残高などの控除証明書が10月頃にそろい、扶養の人数も年末時点で確定するためです。情報が確定してからでないと従業員は正しく申告できず、会社も実額の年税額を計算できません。カレンダーは情報が確定していく順に並んでいます。</p></details>
+          <details class="check"><summary>Q2. 12月の「精算」と翌1月の締切は、それぞれ何を指しますか。</summary><p>12月は最終給与での従業員個人への過不足の精算（還付・追徴）。翌1月は行政への手続きで、源泉所得税の納付（原則1月10日、納期特例なら1月20日まで）と、源泉徴収票・給与支払報告書・法定調書の提出（1月31日まで）です。個人精算と行政報告は別の締切です。</p></details>
+          <details class="check"><summary>Q3. 年末調整に関わる三者と、それぞれの役割を述べてください。</summary><p>従業員（申告書と控除証明書を提出）、会社＝給与の支払者（回収・チェック・年税額の計算・精算・行政への報告と納付）、行政＝税務署と市区町村（源泉所得税の収納、法定調書・給与支払報告書の受領と翌年度の住民税課税）です。</p></details>
+        </div>
+      </section>
+
+      <section class="chapter" id="ch12">
+        <h2>第12章　申告書を読み解く</h2>
+        <div class="chap-map"><strong>この章の位置づけ：</strong>年末調整の申告書は「記入欄の集まり」ではなく、<strong>第2部で学んだ控除を判定するための情報回収装置</strong>です。この章では4種類の申告書を、書き方ではなく「どの控除の、何を判定するために、どの情報を集めているか」という観点で読み解きます。申告書 → 控除の対応がつかめれば、様式が毎年変わっても本質を見失いません。第2部（控除）と第13章（源泉徴収簿への集計）をつなぐ結節点の章です。</div>
+
+        <p>年末調整で従業員が会社へ提出する申告書は、大きく次の4種類です。それぞれ<strong>集めている情報の目的</strong>が違います。まず全体対応を一覧にします。</p>
+        <div class="scroll-x"><table>
+          <tr><th>申告書（実務略称）</th><th>集める情報</th><th>判定する控除（第2部）</th></tr>
+          <tr><td>扶養控除等（異動）申告書（マル扶）</td><td>扶養親族・源泉控除対象配偶者・障害・寡婦/ひとり親などの人的事情</td><td>扶養控除、障害者控除、寡婦・ひとり親控除、勤労学生控除（第6・7章）／月次の甲欄判定の土台</td></tr>
+          <tr><td>基礎控除申告書 兼 配偶者控除等申告書 兼 特定親族特別控除申告書 兼 所得金額調整控除申告書（マル基配所）</td><td>本人の合計所得の見積り、配偶者の所得、特定親族の所得、23歳未満扶養等の有無</td><td>基礎控除、配偶者(特別)控除、特定親族特別控除、所得金額調整控除（第5・6・7章）</td></tr>
+          <tr><td>保険料控除申告書（マル保）</td><td>生命保険料・地震保険料・社会保険料（申告分）・小規模企業共済等掛金の支払額</td><td>生命保険料控除、地震保険料控除、社会保険料控除、小規模企業共済等掛金控除（第8章）</td></tr>
+          <tr><td>住宅借入金等特別控除申告書（住宅ローン控除申告書）</td><td>住宅ローンの年末残高、居住開始日、控除区分</td><td>住宅借入金等特別控除＝税額控除（第9章）</td></tr>
+        </table></div>
+
+        <h3>マル扶 —— 人的控除と「月次の扶養人数」の土台</h3>
+        <p>扶養控除等（異動）申告書は、第2章で見たとおり<strong>甲欄で源泉徴収されるための入場券</strong>であり、同時に人的控除（扶養控除・障害者控除・寡婦/ひとり親控除など）の判定材料を集める書類です。「異動」という語が入っているのは、年の途中で扶養が増減したら訂正して出し直す性格の書類だから。判定はすべて<strong>12月31日時点の現況</strong>で確定します。佐藤さんなら、長女・葵さん（16歳・一般扶養）をここに書き、長男・陽向さん（10歳）は16歳未満なので扶養控除の対象外——ただし障害者控除や住民税の算定では16歳未満も意味を持つため、記載欄自体は存在します。</p>
+
+        <div class="year-note-block" style="background:var(--note-bg);border:1px solid var(--note-border);color:var(--note-fg)"><strong>令和8年分の様式変更：「源泉控除対象親族」</strong><br>
+        令和8年分の扶養控除等申告書から、記載の中心が<strong>源泉控除対象親族</strong>に変わりました。これは「控除対象扶養親族」に加えて、<strong>特定親族（19歳以上23歳未満・合計所得58万円超123万円以下）のうち合計所得金額が100万円以下の人</strong>を含めた区分です。なぜこの区分ができたか——令和7年に特定親族特別控除（第6章）が新設され、大学生年代の親族も月次の源泉徴収で「扶養親族等の数」にカウントできるようになったためです。従来のマル扶は「控除対象扶養親族の数」で月次の甲欄税額を決めていましたが、特定親族もそこに乗せる必要が生じ、両者をまとめて<strong>源泉控除対象親族</strong>と呼ぶことにした、というのが変更の背景です<span class="year-note">令和8年分時点</span>。</div>
+
+        <h3>マル基配所 —— 一枚で「基礎・配偶者・特定親族・調整」を判定</h3>
+        <p>長い名前ですが、要は<strong>「所得の見積り」で決まる控除をまとめて申告する一枚</strong>です。第6・7章で見たように、これらの控除はいずれも<strong>合計所得金額</strong>を軸に金額が段階的に変わります。</p>
+        <ul>
+          <li><strong>基礎控除申告書</strong>：本人の合計所得の見積り → 基礎控除額（令和7・8年で金額改正あり／第7章）を決める。</li>
+          <li><strong>配偶者控除等申告書</strong>：本人と配偶者双方の合計所得 → 配偶者控除／配偶者特別控除の額を決める。佐藤さんの妻・美咲さん（パート年95万円）はここで判定。</li>
+          <li><strong>特定親族特別控除申告書</strong>：特定親族の合計所得 → 控除額（最高63万円）を決める。田中さんの弟・翔さん（バイト年150万円＝合計所得85万円）はここに書き、63万円を得ます<span class="year-note">令和7年分</span>。</li>
+          <li><strong>所得金額調整控除申告書</strong>：年収850万円超かつ23歳未満扶養等の有無 → 所得金額調整控除（第5章）を判定。鈴木さん（年収1,050万円・大学生の長男あり）が対象。</li>
+        </ul>
+        <p>4つが1枚に統合されているのは、いずれも「本人・家族の所得の見積り」という同じ入力から分岐する判定だからです。入力源が共通なので、様式もまとめられているわけです。</p>
+
+        <h3>マル保 —— 実額の物的控除を集める</h3>
+        <p>保険料控除申告書は、第8章の<strong>物的控除</strong>（生命保険料・地震保険料・社会保険料の申告分・小規模企業共済等掛金）を集める書類です。ここには必ず<strong>控除証明書</strong>を添付します。人的控除（マル扶）が「誰がいるか」を問うのに対し、マル保は「いくら払ったか」という金額そのものが判定材料。佐藤さんの生命保険（新制度）・介護医療保険・地震保険・iDeCoはすべてここに集約され、第8章の計算式で控除額に変換されます。</p>
+
+        <h3>住宅ローン控除申告書 —— 唯一の税額控除</h3>
+        <p>4種の中で唯一、<strong>所得控除ではなく税額控除</strong>（第9章）を扱うのがこの申告書です。税務署が発行する「年末調整のための住宅借入金等特別控除証明書」と、金融機関の<strong>残高証明書</strong>をもとに、年末残高と控除区分を記載します。初年（1年目）は確定申告が必要で年末調整では扱えず（第4章）、2年目以降のみこの申告書で処理する——という棲み分けを思い出してください。佐藤さんは購入2年目以降なので、この申告書で控除を受けられます。</p>
+
+        <aside class="engineer-note"><span class="tag">ENGINEER'S NOTE — 申告書はフォームでなくスキーマで捉える</span>
+        申告書を実装するとき、紙の様式をそのままフォーム化すると毎年の様式変更で破綻します。得策は<strong>「集める情報」を正規化したデータモデル</strong>を先に定義し、様式は入力ビューとして被せることです。たとえば人的情報（親族エンティティ：続柄・生年月日・合計所得見積り・障害区分・同居有無）を一元管理すれば、マル扶の「控除対象扶養親族」も令和8年の「源泉控除対象親族」も、同じ親族データへの<strong>述語（判定関数）</strong>の違いとして表現できます。<code>isControlledDependent(person, year)</code> と <code>isWithholdingTargetRelative(person, year)</code> を年度パラメータ付きで分け、様式はその真偽で表示を切り替える。こうしておけば、令和8年の「源泉控除対象親族＝控除対象扶養親族＋特定親族のうち合計所得100万円以下」という定義変更も、判定関数1本の差し替えで吸収できます。マル基配所の4控除も、共通の所得見積りエンティティに対する4つの判定として実装すると重複が消えます。フォームを増やすのではなく、判定を年度で切り替える——これが毎年改正への設計原則（第26章）です。</aside>
+
+        <div class="check-wrap"><h3>理解度チェック</h3>
+          <details class="check"><summary>Q1. マル基配所（基礎・配偶者・特定親族・所得金額調整控除）の4つが1枚に統合されているのはなぜですか。</summary><p>いずれも「本人・配偶者・特定親族の合計所得金額の見積り」という共通の入力から金額が段階的に決まる控除だからです。入力源が同じなので様式もまとめられています。</p></details>
+          <details class="check"><summary>Q2. 令和8年分で登場した「源泉控除対象親族」とは何で、なぜ導入されましたか。</summary><p>控除対象扶養親族に、特定親族（19〜22歳・合計所得58万円超123万円以下）のうち合計所得金額100万円以下の人を加えた区分です。令和7年創設の特定親族特別控除により、大学生年代の親族も月次の源泉徴収で「扶養親族等の数」に数えられるようになったため、両者をまとめて記載する区分として導入されました<span class="year-note">令和8年分時点</span>。</p></details>
+          <details class="check"><summary>Q3. 4種の申告書のうち、唯一「税額控除」を扱うのはどれですか。他の3つとの違いは何ですか。</summary><p>住宅ローン控除申告書です。他の3つ（マル扶・マル基配所・マル保）が課税所得を下げる所得控除を扱うのに対し、これは算出した税額から直接差し引く税額控除（第9章）を扱います。2年目以降のみ年末調整で処理できます。</p></details>
+        </div>
+      </section>
+
+      <section class="chapter" id="ch13">
+        <h2>第13章　源泉徴収簿と源泉徴収票</h2>
+        <div class="chap-map"><strong>この章の位置づけ：</strong>第12章で集めた情報は、どこで計算され、どう外に出ていくのか。その答えが二つの帳票です。<strong>源泉徴収簿は計算の作業台</strong>、<strong>源泉徴収票は結果の証明書</strong>。この章では両者の記載項目を、第1章のパイプライン（収入→所得→課税所得→税額）と対応づけて読み解きます。佐藤さんの数字を実際に流し込み、申告書（12章）と精算（15章）をつなぐ計算の本体を体感しましょう。</div>
+
+        <p>年末調整の計算は、宙で行われるわけではありません。<strong>源泉徴収簿</strong>という会社が従業員ごとに持つ帳票の上で、毎月の給与・賞与・源泉税額を積み上げ、年末に控除を差し引いて年税額を出します。そして確定した結果を清書して本人・行政へ渡すのが<strong>源泉徴収票</strong>です。作業台と成果物、という関係で捉えてください。</p>
+
+        <h3>源泉徴収簿 —— 計算の作業台</h3>
+        <p>源泉徴収簿は大きく2ブロックからなります。上段は<strong>月々の記録</strong>（各月・各賞与の支給額と源泉徴収税額を1年分並べる）、下段は<strong>年末調整の計算</strong>（集めた控除を差し引いて年税額を出す欄）です。下段は第1章のパイプラインそのものです。佐藤さん（年収620万円）で追ってみます<span class="year-note">令和7年分時点。金額は説明用の概算</span>。</p>
+        <div class="flow-diagram"><div class="flow-v" style="max-width:38rem">
+          <div class="flow-stage">① 給与・賞与の収入金額 合計<span class="sub">月次給与＋賞与を12か月分集計 ＝ 6,200,000円</span></div>
+          <div class="flow-op"></div>
+          <div class="flow-stage">② 給与所得控除後の給与等の金額<span class="sub">給与所得控除を差し引く（第5章）＝ 4,660,000円</span></div>
+          <div class="flow-op"></div>
+          <div class="flow-stage">③ 所得控除の合計<span class="sub">社会保険料＋生命保険料＋地震保険＋iDeCo＋配偶者＋扶養＋基礎控除（第6〜8章）</span></div>
+          <div class="flow-op"></div>
+          <div class="flow-stage">④ 課税給与所得金額（1,000円未満切捨て）<span class="sub">② − ③</span></div>
+          <div class="flow-op"></div>
+          <div class="flow-stage">⑤ 算出所得税額<span class="sub">速算表を適用（第10章）</span></div>
+          <div class="flow-op"><span class="minus">住宅ローン控除を差し引く（第9章・税額控除）</span></div>
+          <div class="flow-stage">⑥ 年調所得税額<span class="sub">⑤ − 住宅借入金等特別控除</span></div>
+          <div class="flow-op"><span class="times">×102.1%（復興特別所得税）</span></div>
+          <div class="flow-stage result">⑦ 年調年税額（100円未満切捨て）</div>
+        </div></div>
+        <p>大切なのは、源泉徴収簿の下段が<strong>第1章の地図をそのまま帳票にしたもの</strong>だという点です。①が収入、②が所得、④が課税所得、⑤〜⑦が税額——各段は第2部で部品を積み上げてきた計算に一対一で対応します。第12章の各申告書は、この③（所得控除）と⑥（税額控除）の欄を埋めるために情報を集めていたわけです。最後に⑦の年調年税額と、月々の源泉税額の合計（上段の集計）を突き合わせ、その差が過不足＝第15章で精算する額になります。</p>
+
+        <h3>源泉徴収票 —— 結果の証明書</h3>
+        <p>源泉徴収票は、確定した結果を<strong>本人・税務署・市区町村へ示す証明書</strong>です。源泉徴収簿の計算過程のうち、外部に必要な項目だけを抜き出したもの、と考えると記載項目の意味が読めます。主な欄は次のとおり。</p>
+        <div class="scroll-x"><table>
+          <tr><th>記載項目</th><th>意味</th><th>簿のどの段か</th></tr>
+          <tr><td>支払金額</td><td>その年に支払った給与・賞与の総額（税・社保天引き前）</td><td>①収入</td></tr>
+          <tr><td>給与所得控除後の金額</td><td>給与所得控除を引いた後の給与所得</td><td>②所得</td></tr>
+          <tr><td>所得控除の額の合計額</td><td>社会保険料・生命保険料・配偶者・扶養・基礎控除などの総和</td><td>③所得控除</td></tr>
+          <tr><td>源泉徴収税額</td><td>年末調整後に確定した年調年税額（精算後の最終額）</td><td>⑦年税額</td></tr>
+          <tr><td>（摘要・内訳欄）社会保険料等の金額、生命保険料の控除額、住宅借入金等特別控除の額、配偶者・扶養親族の氏名等</td><td>控除の内訳や家族情報。市区町村の住民税計算や本人の確定申告に使う</td><td>③④⑥の内訳</td></tr>
+        </table></div>
+        <p>佐藤さんの源泉徴収票なら、「支払金額 6,200,000／給与所得控除後 4,660,000／所得控除の合計 …／源泉徴収税額 （年調後の確定額）」と並び、摘要欄に生命保険料控除額・住宅ローン控除額・配偶者（美咲さん）・扶養親族（葵さん）が載ります。<strong>この一枚を市区町村へ回したものが給与支払報告書</strong>（様式はほぼ同じ）で、翌年度の住民税の課税資料になります（第16章）。同じ計算結果が、本人への証明・税務署への法定調書・市区町村への課税資料という三役を兼ねているわけです。</p>
+
+        <aside class="engineer-note"><span class="tag">ENGINEER'S NOTE — 簿は計算グラフ、票はそのビュー</span>
+        実装の観点では、<strong>源泉徴収簿＝計算の中間状態を全部保持したモデル</strong>、<strong>源泉徴収票＝そのモデルの表示用プロジェクション</strong>と割り切ると綺麗に収まります。簿には①〜⑦の各段の値をすべて永続化し（監査・再計算・第15章の再年末調整で必要）、票はそこから必要フィールドを射影して生成する。ポイントは3つ。(1) <strong>端数処理の適用点を段ごとに固定</strong>する——課税給与所得金額は1,000円未満切捨て、年調年税額は100円未満切捨て、と丸めるタイミングが違うので、各段のデータ型と丸め規則をセットで持つ（第25章）。(2) <strong>票と給与支払報告書はほぼ同一データの別レイアウト</strong>なので、一つの結果モデルから複数フォーマット（本人交付用PDF・eLTAX用電子データ・法定調書）を出力するレンダラ分離にする。(3) <strong>金額は整数（円）で保持</strong>し浮動小数を持ち込まない。簿を「計算グラフ」、票を「その読み取り専用ビュー」と捉えれば、表示の都合が計算を汚さずに済みます。</aside>
+
+        <div class="check-wrap"><h3>理解度チェック</h3>
+          <details class="check"><summary>Q1. 源泉徴収簿と源泉徴収票の役割の違いを一言で。</summary><p>源泉徴収簿は年税額を計算する<strong>作業台</strong>（毎月の記録＋年末調整の計算過程）、源泉徴収票は確定した結果を本人・行政へ示す<strong>証明書</strong>です。簿の計算結果から必要項目を抜き出したものが票にあたります。</p></details>
+          <details class="check"><summary>Q2. 源泉徴収票の「源泉徴収税額」欄には何が入りますか。毎月の天引き合計ですか。</summary><p>毎月の天引き合計ではなく、<strong>年末調整後に確定した年調年税額</strong>（精算後の最終的な年税額）が入ります。源泉徴収簿の⑦にあたる値です。</p></details>
+          <details class="check"><summary>Q3. 源泉徴収票と給与支払報告書の関係は。</summary><p>ほぼ同じ内容の帳票で、宛先が違います。本人・税務署へ渡すのが源泉徴収票、市区町村へ渡すのが給与支払報告書で、後者は翌年度の住民税の課税資料になります（第16章）。同じ計算結果が複数の宛先へ流れます。</p></details>
+        </div>
+      </section>
+
+      <section class="chapter" id="ch14">
+        <h2>第14章　中途入社・退職・複数勤務</h2>
+        <div class="chap-map"><strong>この章の位置づけ：</strong>ここまでは「1年間1か所で働いた人」を暗黙の前提にしてきました。現実には転職・退職・掛け持ちがあります。この章は年末調整の<strong>例外・境界</strong>を扱います。鍵は一つ——<strong>年税額はその人の1年分の給与を合算して計算する</strong>という原則です。中途入社の田中さんを主役に、前職合算・乙欄・対象外パターンを整理します。第4章の対象者判定を、具体的なケースで深掘りする章です。</div>
+
+        <p>所得税は<strong>暦年（1月1日〜12月31日）単位</strong>で、その人の1年間の所得全体に課されます。勤務先が何社あっても、税額の計算単位はあくまで「個人の1年分」。この一点さえ握れば、以下のケースはすべて同じ原則の派生だと分かります。</p>
+
+        <h3>中途入社 —— 前職源泉徴収票の合算</h3>
+        <p>年の途中で転職し、年末に在籍している人は、<strong>現勤務先が前職分も合算して年末調整</strong>します。田中さん（当年6月に中途入社／現勤務先380万円＋前職90万円）で見ましょう<span class="year-note">令和7年分時点</span>。</p>
+        <div class="flow-diagram"><div class="flow-v" style="max-width:34rem">
+          <div class="flow-stage">前職の給与 3,800,000円ではなく…<span class="sub">前職 900,000円 ＋ 現勤務先 3,800,000円</span></div>
+          <div class="flow-op"></div>
+          <div class="flow-stage">合算した収入 4,700,000円<span class="sub">これを一つの年収として給与所得控除を計算（第5章）</span></div>
+          <div class="flow-op"></div>
+          <div class="flow-stage result">前職の源泉徴収税額も合算し、年調年税額との差を精算</div>
+        </div></div>
+        <p>ここで<strong>前職の源泉徴収票が必須</strong>になります。現勤務先は前職の「支払金額」と「源泉徴収税額」を知らないと、①1年分の収入を合算できず、②既に前職で天引きされた税額を過不足計算に組み込めないからです。第5章で「380万と90万を別々に計算せず合算した470万を速算表に当てる」と述べたのは、この合算のこと。もし前職の源泉徴収票が年末までに間に合わなければ、現勤務先だけでは年末調整できず、本人が<strong>確定申告</strong>で合算することになります（第15章）。前職分を落とすと年収が過少になり、年税額が過小に出て後で追徴——という事故につながるため、実務では回収が最重要事項です。</p>
+
+        <h3>乙欄 —— 掛け持ちの「従たる給与」</h3>
+        <p>2か所以上で働く人は、第2章で見たとおりマル扶を<strong>主たる1社にだけ</strong>提出します。マル扶を出した会社は甲欄で徴収し年末調整を行いますが、出していない会社（従たる給与）は<strong>乙欄</strong>で高めに源泉徴収し、<strong>年末調整はしません</strong>。なぜ高めか——その人の所得全体を把握しているのは主たる勤務先だけで、従たる側は「上乗せ分に高い率がかかる」前提で多めに取っておく方が、本人が取りっぱぐれ（追徴不能）になりにくいからです。乙欄の人は複数の給与を自分で合算して<strong>確定申告</strong>で精算します。田中さんは1か所勤務・甲欄なので乙欄には当たりませんが、もし副業で別の会社からも給与を得ていれば、その副業分は乙欄徴収＋確定申告、という形になります。</p>
+
+        <h3>退職 —— 対象になる退職・ならない退職</h3>
+        <p>年の途中で退職した人は、原則として<strong>年末調整の対象外</strong>です。年末時点で在籍していないため、その会社では1年分を締められないから。再就職すれば新しい勤務先が前職（この会社）分を合算して年末調整し、再就職しなければ本人が確定申告で精算します。ただし例外的に、退職時点で会社が年末調整すべきケースがあります。</p>
+        <div class="scroll-x"><table>
+          <tr><th>退職のパターン</th><th>年末調整</th><th>理由</th></tr>
+          <tr><td>年の途中で退職し再就職（年内）</td><td>新勤務先が合算して行う</td><td>年末に在籍する会社が1年分を締められる</td></tr>
+          <tr><td>年の途中で退職し年内は再就職せず</td><td>対象外（本人が確定申告）</td><td>どの会社も1年分を把握できない</td></tr>
+          <tr><td>死亡退職</td><td>退職時に会社が行う</td><td>以後の給与がなく、その時点で1年分が確定する</td></tr>
+          <tr><td>心身の障害による退職で再就職の見込みがない</td><td>退職時に会社が行う</td><td>年内の再就職が見込めず、確定できるため</td></tr>
+          <tr><td>12月中の給与支給後に退職</td><td>会社が行う</td><td>その年の給与が支給し終えて確定している</td></tr>
+        </table></div>
+
+        <h3>年末調整の対象外パターンの整理</h3>
+        <p>第4章で触れた対象外を、この章の視点で束ねておきます。<strong>年末調整されない＝確定申告で精算する</strong>、が共通の帰結です。</p>
+        <ul>
+          <li>マル扶未提出（乙欄・従たる給与）の人</li>
+          <li>年の途中で退職し年内に再就職しなかった人（原則）</li>
+          <li>給与収入が2,000万円を超える人</li>
+          <li>前職の源泉徴収票が年末までに間に合わなかった人（合算不能）</li>
+          <li>継続して同一の雇用主に雇用されない日雇い等（丙欄）の人</li>
+        </ul>
+
+        <aside class="engineer-note"><span class="tag">ENGINEER'S NOTE — 合算と対象外判定の分岐設計</span>
+        中途入社・退職・複数勤務は、年末調整プロダクトで最もバグが出やすい領域です。設計の勘所を3点。(1) <strong>前職給与は「別レコード」ではなく合算の入力</strong>——現勤務先の給与と前職源泉徴収票を<strong>合算した一つの年収</strong>で給与所得控除・税額を計算する。前職分を別枠で控除計算すると二重に給与所得控除を引いてしまう典型バグになる。前職データには「支払金額」「源泉徴収税額」「社会保険料」の3項目を最低限モデル化し、未回収なら<strong>年末調整をブロックして確定申告へ誘導</strong>するゲートを置く。(2) <strong>甲乙丙は税額計算のモードであって従業員属性ではない</strong>——マル扶提出の有無から導出する派生値として持ち、乙欄・丙欄は年末調整フローに乗せない。(3) <strong>退職の対象判定はイベント日で分岐</strong>——退職日・再就職有無・死亡/障害区分の組み合わせで「会社が年調するか／確定申告か」が決まる。第4章のNOTEで述べた「基準日で決まる属性」と「イベント日で決まる属性」の区別が、まさにここで効きます。合算・乙欄・退職を一つの巨大な条件分岐に潰さず、「収入の合算」「徴収モード」「対象者ゲート」という独立した3レイヤーに分けるのが破綻しない鍵です。</aside>
+
+        <div class="check-wrap"><h3>理解度チェック</h3>
+          <details class="check"><summary>Q1. 田中さん（前職90万円＋現勤務先380万円）の年末調整で、給与所得控除はどう計算しますか。</summary><p>前職と現勤務先を<strong>合算した470万円</strong>を一つの年収として給与所得控除を計算します。90万円と380万円を別々に控除計算してはいけません（給与所得控除を二重に引くことになります）。前職の源泉徴収税額も合算して過不足を精算します。</p></details>
+          <details class="check"><summary>Q2. 掛け持ちで従たる給与が「乙欄」で高めに徴収され、年末調整されないのはなぜですか。</summary><p>その人の所得全体を把握しているのは主たる勤務先（マル扶提出先）だけで、従たる側は上乗せ分に高い率がかかる前提で多めに徴収しておく方が徴収漏れを防げるためです。乙欄の人は複数の給与を自分で合算して確定申告で精算します。</p></details>
+          <details class="check"><summary>Q3. 年の途中で退職した人でも、退職時に会社が年末調整するケースを挙げてください。</summary><p>死亡退職、心身の障害による退職で再就職の見込みがない場合、12月中の給与支給後の退職など。いずれも「その時点で1年分の給与が確定し、年内の再就職が見込めない」ため会社で締められます。</p></details>
+        </div>
+      </section>
+
+      <section class="chapter" id="ch15">
+        <h2>第15章　過不足の精算とやり直し</h2>
+        <div class="chap-map"><strong>この章の位置づけ：</strong>年税額が確定したら、あとは差額を清算するだけ——のはずですが、実務ではその「清算」に方法があり、確定後に間違いが見つかる「やり直し」もあります。この章では、過不足をどう還付・追徴するか、いつ再年末調整するか、いつ確定申告へ切り替えるかを整理します。第3部の締めくくりとして、計算（13章）の後始末と、年末調整の限界（4章）への接続点を押さえます。</div>
+
+        <p>第3章で見たとおり、過不足額は<strong>源泉徴収税額の合計 − 年調年税額</strong>。プラスなら還付、マイナスなら追徴です。多くは還付になります（月次で無視されていた控除が年末にまとまって効くため）。ではその還付・追徴を<strong>どうやって従業員に渡す/取るか</strong>。ここに実務の工夫があります。</p>
+
+        <h3>還付・追徴の方法 —— 会社の「預り金」で調整する</h3>
+        <p>ポイントは、還付金は税務署から従業員に振り込まれるのではなく、<strong>会社が立て替えて渡す</strong>という点です。仕組みはこうです。会社は毎月、従業員から源泉徴収した所得税を<strong>「預り金」として保管し、翌月に国へ納付</strong>しています。年末調整で還付が生じると、会社は<strong>まだ国へ納めていない他の従業員の源泉税や、その月の納付予定額から差し引いて</strong>還付原資に充て、本人へ支払います。</p>
+        <div class="scroll-x"><table>
+          <tr><th>過不足</th><th>従業員への渡し方</th><th>会社の納付への反映</th></tr>
+          <tr><td>還付（引きすぎ）</td><td>12月または最終給与に上乗せして支給</td><td>その月に国へ納める源泉税の総額から還付分を減らして納付</td></tr>
+          <tr><td>追徴（引き足りない）</td><td>12月または最終給与から追加で天引き</td><td>追徴分を上乗せして納付</td></tr>
+          <tr><td>還付額が大きく1か月で戻しきれない</td><td>翌月以降に繰り越して順次還付、または税務署へ還付請求</td><td>複数月にわたり納付額から控除</td></tr>
+        </table></div>
+        <p>佐藤さんが還付になる場合、その還付金は「税務署から後日振込」ではなく、12月給与の手取りに上乗せされて戻ります。会社視点では、佐藤さんへの還付分だけ、その月に国へ納める源泉税の合計が減る——個人と国の間に会社の預り金が挟まっているのがこの制度の要です。</p>
+
+        <h3>再年末調整 —— 確定後の「やり直し」</h3>
+        <p>年末調整を締めた後で、申告内容の誤りや漏れが判明することがあります。たとえば控除証明書の出し忘れ、扶養の記載漏れ、配偶者の所得見積り違いなど。この場合、<strong>翌年1月31日まで</strong>（源泉徴収票の交付・給与支払報告書の提出期限まで）であれば、会社は<strong>再年末調整</strong>してやり直せます。まだ行政へ結果を出していない期間だからこそ内部で訂正できるわけです。再計算で新たな過不足が出れば、追加還付・追加徴収します。</p>
+        <p>境目は<strong>「行政へ提出したかどうか」</strong>です。1月31日を過ぎ、源泉徴収票を本人へ交付し給与支払報告書を市区町村へ出した後は、会社側でのやり直しはできず、<strong>本人が確定申告（または更正の請求）で修正</strong>する世界に移ります。年末調整というのは、あくまで<strong>行政へ結果を渡すまでの、会社の内部工程</strong>だと捉えると、この境目が腑に落ちます。</p>
+
+        <h3>確定申告への切り替え・上乗せ</h3>
+        <p>第4章で見たように、年末調整では扱えない控除や、そもそも年末調整できないケースがあります。これらは確定申告で処理します。整理すると3つのパターンです。</p>
+        <ul>
+          <li><strong>年末調整を受けたうえで上乗せ</strong>：年末調整は完了しているが、医療費控除・寄附金控除（ふるさと納税の確定申告分）・初年の住宅ローン控除などを使いたい人。年末調整済みの源泉徴収票を土台に、確定申告で控除を追加します（第4章の「両方やる」パターン）。</li>
+          <li><strong>年末調整の代わりに確定申告</strong>：そもそも対象外の人（乙欄・年途中退職で未再就職・給与2,000万円超・前職源泉徴収票が間に合わなかった田中さんのようなケース＝第14章）。1年分を自分で合算して申告します。</li>
+          <li><strong>やり直しの期限を過ぎた修正</strong>：1月31日以降に誤りが判明した場合。会社の再年末調整ではなく、本人の確定申告・更正の請求で正します。</li>
+        </ul>
+        <p>いずれも<strong>年末調整の結果（源泉徴収票）が確定申告の出発点になる</strong>点が共通です。年末調整は確定申告と対立せず、多くの人にとって確定申告を不要にし、必要な人にとっては土台を用意する——第4章の棲み分けが、精算・やり直しの局面でも一貫しているのが分かります。</p>
+
+        <aside class="engineer-note"><span class="tag">ENGINEER'S NOTE — 精算の符号・冪等性・訂正フロー</span>
+        精算とやり直しは、実装で正確さが強く問われる部分です。3点を強調します。(1) <strong>過不足の符号と充当ロジック</strong>——還付＝マイナス徴収、追徴＝プラス徴収として給与計算・納付データまで一貫した符号で流す（第3章NOTE）。還付原資を「その月の源泉税納付総額からの控除」として扱うため、<strong>従業員個人の還付</strong>と<strong>事業所単位の納付額</strong>という粒度の違うデータを整合させる必要がある。還付超過（納付額を還付が上回る）の繰越も状態として持つ。(2) <strong>再年末調整は冪等な再計算</strong>——第13章NOTEの「簿＝計算グラフ」を活かし、入力（申告書データ）を差し替えて全段を再計算し、<strong>確定済みバージョンとの差分</strong>を新たな過不足として出す。既存の精算に上書きするのではなく、訂正イベントとして追記し、監査可能にする。(3) <strong>1月31日という状態境界をシステムで表現</strong>する——「行政提出前＝会社で再年調可能」「提出後＝確定申告へ誘導」を明確な状態遷移にし、提出後の変更要求は自動的に確定申告ガイドへ分岐させる。年末調整を「提出でロックされる工程」としてモデル化することが、ここでの破綻を防ぎます。</aside>
+
+        <div class="check-wrap"><h3>理解度チェック</h3>
+          <details class="check"><summary>Q1. 年末調整の還付金は、税務署から従業員へ直接振り込まれますか。</summary><p>いいえ。会社が立て替えて従業員へ渡します。会社は毎月の源泉税を「預り金」として保管しており、還付分をその月に国へ納める源泉税の総額から差し引いて還付原資に充てます。個人と国の間に会社の預り金が挟まっているのがこの制度の要です。</p></details>
+          <details class="check"><summary>Q2. 年末調整を締めた後に控除の出し忘れが見つかりました。会社でやり直せるのはいつまでで、その境目は何ですか。</summary><p>翌年1月31日（源泉徴収票の交付・給与支払報告書の提出期限）までなら会社が再年末調整でやり直せます。境目は「行政へ結果を提出したかどうか」で、提出後は会社では直せず、本人が確定申告や更正の請求で修正します。</p></details>
+          <details class="check"><summary>Q3. 「年末調整を受けた人は確定申告と無縁」ではない例を挙げてください。</summary><p>年末調整済みでも、医療費控除・ふるさと納税（確定申告分）・初年の住宅ローン控除などは確定申告で上乗せします。また前職源泉徴収票が間に合わず合算できなかった人（第14章の田中さんのようなケース）は、年末調整の代わりに確定申告で精算します。いずれも源泉徴収票が確定申告の出発点になります。</p></details>
+        </div>
+      </section>
+
+      <!-- ============ 第4部 ============ -->
+      <section class="part-cover" id="part4"><h2>第4部　周辺制度との接続</h2></section>
+
+      <section class="chapter" id="ch16">
+        <h2>第16章　住民税との連携</h2>
+        <div class="chap-map"><strong>この章の位置づけ：</strong>ここまでは「所得税」の話でした。しかし年末調整で会社が集めたデータは、所得税だけでなく<strong>住民税</strong>の計算にも使われます。むしろ従業員から見れば、翌年6月から毎月の給与天引きが変わるのは住民税の方。この章では、年末調整の結果が<strong>給与支払報告書</strong>という形で市区町村へ流れ、<strong>翌年度の住民税</strong>として課税され、<strong>特別徴収</strong>で天引きされるまでの経路を追います。第13章の源泉徴収票と「ほぼ同じ様式の別の書類」が、税務署ではなく市区町村へ向かう——その一点が出発点です。</div>
+
+        <p>所得税と住民税は<strong>別の税金</strong>です。所得税は国税（納付先は国＝税務署）、住民税は地方税（納付先は市区町村と都道府県）。にもかかわらず、両者は<strong>同じ「所得」と「所得控除」の情報</strong>をベースに計算されます。だから会社は、年末調整で一度集めた申告データを、<strong>税務署向け</strong>と<strong>市区町村向け</strong>の二方向に流します。この二又の分岐を押さえるのが本章の核です。</p>
+
+        <h3>源泉徴収票と給与支払報告書 —— 同じ中身、違う宛先</h3>
+        <p>第13章で見た源泉徴収票は、従業員本人と税務署へ渡す書類でした。これと<strong>ほぼ同じ様式・同じ記載内容</strong>で、宛先を市区町村にしたものが<strong>給与支払報告書（個人別明細書）</strong>です。会社は翌年1月31日までに、従業員が1月1日時点で住む市区町村へこれを提出します。支払金額・給与所得控除後の金額・所得控除の合計・扶養親族の情報など、記載項目は源泉徴収票とそろっています。</p>
+        <div class="flow-diagram"><div class="flow-v" style="max-width:38rem">
+          <div class="flow-stage">年末調整で確定した1年分のデータ<span class="sub">支払金額・所得控除・扶養情報など（第13章の源泉徴収簿の成果）</span></div>
+          <div class="flow-op"></div>
+          <div class="flow-stage">同じ中身を宛先違いで2通に分岐<span class="sub">源泉徴収票 → 税務署／本人　　給与支払報告書 → 市区町村</span></div>
+          <div class="flow-op"></div>
+          <div class="flow-stage result">市区町村が受け取り、翌年度の住民税を計算</div>
+        </div></div>
+        <p>ポイントは<strong>提出先の判定基準日が「1月1日」</strong>だという点です。住民税は「その年の1月1日に住んでいた自治体」が課税します。年末調整は12月31日時点の現況で所得税を締めますが（第13章）、給与支払報告書の宛先は年明け1月1日の住所地。ほんの数日ずれた二つの基準日が、それぞれ別の税を規定しているわけです。</p>
+
+        <h3>翌年度課税 —— 住民税は「後払い」で効いてくる</h3>
+        <p>住民税の最大の特徴は<strong>後払い（前年所得課税）</strong>である点です。所得税はその年の所得にその年のうちに課され、年末調整で精算されます。ところが住民税は、<strong>ある年の所得を、翌年度に課税</strong>します。佐藤さん（年収620万円）で見ましょう。</p>
+        <div class="scroll-x"><table>
+          <tr><th>時点</th><th>所得税</th><th>住民税</th></tr>
+          <tr><td>令和7年（1〜12月）</td><td>毎月源泉徴収 → 12月に年末調整で精算・完了</td><td>この年の所得が課税対象として確定していく</td></tr>
+          <tr><td>令和8年1月31日</td><td>—</td><td>会社が令和7年分の給与支払報告書を市区町村へ提出</td></tr>
+          <tr><td>令和8年5〜6月</td><td>—</td><td>市区町村が令和7年所得をもとに住民税額を計算・通知</td></tr>
+          <tr><td>令和8年6月〜令和9年5月</td><td>—</td><td>令和7年分の住民税を毎月の給与から天引き（12回）</td></tr>
+        </table></div>
+        <p>つまり<strong>年末調整で確定した令和7年の所得が、1年以上遅れて令和8年6月からの住民税として跳ね返ってくる</strong>。この時間差は、新卒2年目に住民税が急に始まる現象や、退職した翌年に住民税の請求が来て驚く現象の正体です。年末調整データが翌年度課税の入力になっている、という因果を掴むと腑に落ちます。</p>
+
+        <h3>特別徴収と普通徴収 —— 誰が納めるか</h3>
+        <p>住民税の納め方は2種類あります。<strong>特別徴収</strong>は会社が給与から天引きして市区町村へ納める方式、<strong>普通徴収</strong>は本人が納付書で自分で納める方式です。給与所得者は原則<strong>特別徴収</strong>で、これは所得税の源泉徴収と同じ「会社が徴収義務者になる」構図です（第2章）。所得税の源泉徴収と住民税の特別徴収は、名前は違えど「会社が個人の税を天引きして行政へ渡す」という同じ骨格を持ちます。</p>
+        <div class="scroll-x"><table>
+          <tr><th></th><th>所得税（国税）</th><th>住民税（地方税）</th></tr>
+          <tr><td>会社が天引きする仕組み</td><td>源泉徴収</td><td>特別徴収</td></tr>
+          <tr><td>本人が自分で納める仕組み</td><td>確定申告で納付</td><td>普通徴収</td></tr>
+          <tr><td>課税のタイミング</td><td>その年（現年課税）</td><td>翌年度（前年所得課税）</td></tr>
+          <tr><td>税額を計算する主体</td><td>会社（年末調整）／本人（確定申告）</td><td>市区町村</td></tr>
+          <tr><td>会社に届く通知</td><td>—（会社が自ら計算）</td><td>特別徴収税額決定通知書（5〜6月）</td></tr>
+        </table></div>
+        <p>決定的な違いは<strong>税額を誰が計算するか</strong>です。所得税は会社が年末調整で自ら計算しますが、住民税は<strong>市区町村が計算して会社へ「この額を天引きしてください」と通知</strong>してきます（特別徴収税額決定通知書）。会社は住民税額を計算しません。給与支払報告書というデータを渡し、計算された結果を受け取って天引きするだけ。年末調整の役割は「住民税計算の入力データを市区町村へ供給すること」までなのです。</p>
+
+        <aside class="engineer-note"><span class="tag">ENGINEER'S NOTE — eLTAX連携と「2つの基準日」のモデル化</span>
+        住民税連携は、年末調整プロダクトが<strong>行政システムと直結する</strong>数少ない領域です。実装の勘所を3点。(1) <strong>給与支払報告書は源泉徴収票の派生データではなく別エンティティ</strong>——中身は9割共通でも、宛先（市区町村コード）・提出先判定基準日（1/1住所）・提出単位（総括表＋個人別明細書）が異なる。源泉徴収票のオブジェクトを使い回すのではなく、<strong>共通の年調結果から2つの帳票を生成する</strong>設計にする。提出は<strong>eLTAX</strong>（地方税ポータル）経由の電子データ（レイアウトはeLTAX仕様のCSV/XML）で、税務署向けのe-Tax／法定調書とはフォーマットもエンドポイントも別（第17章・第19章）。(2) <strong>2つの基準日を別カラムで持つ</strong>——12/31時点の現況（所得税の判定）と、1/1時点の住所（給与支払報告書の宛先）を混同すると、年末に転居した従業員の報告書が誤った自治体へ飛ぶ。(3) <strong>特別徴収税額決定通知の取り込み</strong>——住民税額は自社では計算せず、市区町村から届く通知（近年はeLTAXで電子的に受領可能）をパースして給与天引きマスタへ反映する。この「投げるデータ（給与支払報告書）」と「受け取るデータ（決定通知）」の非対称なペアを、住民税の年間サイクルとしてモデル化するのが破綻しないコツです。</aside>
+
+        <div class="check-wrap"><h3>理解度チェック</h3>
+          <details class="check"><summary>Q1. 源泉徴収票と給与支払報告書は、何が同じで何が違いますか。</summary><p>記載内容（支払金額・所得控除・扶養情報など）はほぼ同じです。違うのは宛先で、源泉徴収票は税務署と本人へ、給与支払報告書は従業員が1月1日に住む市区町村へ提出します。会社は同じ年末調整データから両方を生成します。</p></details>
+          <details class="check"><summary>Q2. 住民税が「翌年度課税」と呼ばれるのはなぜですか。佐藤さんの令和7年の所得はいつ天引きされますか。</summary><p>住民税は前年の所得をもとに翌年度課税されるためです。令和7年の所得は、令和8年6月〜令和9年5月にかけて毎月の給与から特別徴収で天引きされます。所得税の現年課税とはタイミングが1年以上ずれます。</p></details>
+          <details class="check"><summary>Q3. 住民税額は会社が年末調整で計算しますか。</summary><p>いいえ。住民税額は市区町村が計算し、「特別徴収税額決定通知書」で会社へ通知します。会社は給与支払報告書というデータを渡し、通知された額を給与から天引き（特別徴収）するだけです。所得税を自ら計算する年末調整とは役割が異なります。</p></details>
+        </div>
+      </section>
+
+      <section class="chapter" id="ch17">
+        <h2>第17章　法定調書</h2>
+        <div class="chap-map"><strong>この章の位置づけ：</strong>第16章では年末調整データが市区町村へ流れる経路を見ました。この章は<strong>税務署</strong>へ流れる経路です。源泉徴収票もじつは「法定調書」という大きな書類群の一種。会社は年末調整の結果を、<strong>法定調書合計表</strong>という一枚のサマリーとともに税務署へ提出します。ただし源泉徴収票は<strong>全員分を出すわけではない</strong>——ここに金額基準による提出範囲のルールがあります。年末調整の成果物が国へ渡る「最後の一歩」を押さえます。</div>
+
+        <p><strong>法定調書</strong>とは、税法によって税務署への提出が義務づけられた資料の総称です。「誰が誰にいくら払ったか」を国が把握するための情報で、種類は多数（令和時点で数十種類）あります。会社が年末調整に関連して扱う代表格が、<strong>給与所得の源泉徴収票</strong>と、それらを束ねる<strong>給与所得の源泉徴収票等の法定調書合計表</strong>です。年末調整は「会社の中で税額を確定する工程」ですが、その結果を<strong>国が名寄せ・照合できる形で提出する</strong>ところまでが制度の全体像です。</p>
+
+        <h3>法定調書合計表 —— 提出物の「表紙」</h3>
+        <p>法定調書合計表は、その会社が1年間に支払った給与・報酬などの<strong>総額と人数を集計したサマリー</strong>です。個々の源泉徴収票や支払調書を束ねる表紙にあたり、翌年1月31日までに税務署へ提出します。「支払った給与の総額」「源泉徴収した税額の総額」「うち源泉徴収票を添付する人数」などを記載し、税務署は会社の納付実績とこの合計表を突き合わせます。年末調整で確定した会社全体の数字が、ここで一枚に集約されるイメージです。</p>
+
+        <h3>源泉徴収票の税務署提出範囲 —— 全員分ではない</h3>
+        <p>従業員<strong>本人</strong>には全員に源泉徴収票を交付します（第13章）。しかし<strong>税務署へ</strong>提出する源泉徴収票は、一定の金額基準を超える人に限られます。国はすべての給与所得者を把握する必要はなく、金額の大きい人や年末調整をしていない人を重点的に捕捉すれば足りるからです。主な基準は次のとおりです<span class="year-note">令和7年分時点。金額基準は改正され得るため提出前に国税庁の最新様式・手引で確認すること。</span>。</p>
+        <div class="scroll-x"><table>
+          <tr><th>区分</th><th>税務署へ源泉徴収票を提出する基準</th></tr>
+          <tr><td>年末調整をした人（法人の役員）</td><td>その年の給与等の支払金額が150万円を超える場合</td></tr>
+          <tr><td>年末調整をした人（弁護士・税理士等）</td><td>その年の給与等の支払金額が250万円を超える場合</td></tr>
+          <tr><td>年末調整をした一般の従業員</td><td>その年の給与等の支払金額が500万円を超える場合</td></tr>
+          <tr><td>年末調整をしなかった人（乙欄・2,000万円超で年調対象外など）</td><td>おおむね支払金額が50万円／250万円等の基準を超える場合（区分により異なる）</td></tr>
+        </table></div>
+        <p>ペルソナで見ると分かりやすい。佐藤さん（620万円）と鈴木さん（1,050万円）は一般従業員500万円超なので<strong>税務署提出あり</strong>、田中さん（現勤務先380万円）は500万円以下なので<strong>本人交付のみで税務署へは提出しない</strong>（市区町村への給与支払報告書は全員分提出＝第16章）。ここで重要な非対称に気づきます——<strong>市区町村へは全員分（給与支払報告書）、税務署へは基準超の人だけ（源泉徴収票）</strong>。理由は、住民税は全給与所得者に課税するので市区町村が全員の所得を必要とするのに対し、所得税の捕捉は高額者・年調未了者に重点化すれば十分だから。同じ年末調整データでも、二つの宛先で提出範囲が違うのです。</p>
+
+        <h3>支払調書 —— 給与以外の支払いも国は把握する</h3>
+        <p>法定調書は給与だけではありません。会社が<strong>外部の個人・法人へ支払った報酬・料金</strong>——原稿料、講演料、弁護士・税理士報酬、デザイン料など——も、一定額を超えると<strong>報酬、料金、契約金及び賞金の支払調書</strong>として税務署へ提出します。これは年末調整（雇用関係のある従業員の給与の精算）とは別の流れですが、同じ法定調書合計表に集約され、同じ1月31日期限で提出される「兄弟」です。年末調整担当のエンジニアも、法定調書合計表という器の中に「給与の源泉徴収票」と「報酬の支払調書」が並ぶ全体像は知っておくと、提出物の設計を見誤りません。主な支払調書の提出範囲は次のとおりです<span class="year-note">令和7年分時点。基準額は種類・年により異なる。</span>。</p>
+        <div class="scroll-x"><table>
+          <tr><th>法定調書の種類</th><th>主な提出範囲（同一人への年間支払額）</th></tr>
+          <tr><td>給与所得の源泉徴収票</td><td>上表のとおり（役員150万円超／一般500万円超 等）</td></tr>
+          <tr><td>報酬、料金、契約金及び賞金の支払調書</td><td>原則として同一人へ年間5万円を超える場合（区分により100万円超等）</td></tr>
+          <tr><td>退職所得の源泉徴収票</td><td>法人の役員に支払った退職手当等（一般従業員分は税務署提出不要のことが多い）</td></tr>
+          <tr><td>不動産の使用料等の支払調書</td><td>同一人へ年間15万円を超える賃料等（法人・一定の個人が支払者の場合）</td></tr>
+        </table></div>
+
+        <aside class="engineer-note"><span class="tag">ENGINEER'S NOTE — 提出範囲判定と「本人交付／行政提出」の分離</span>
+        法定調書の実装で最も事故りやすいのが<strong>提出範囲の判定</strong>です。設計の要点を3つ。(1) <strong>「本人への交付」と「税務署への提出」は別フラグ</strong>——源泉徴収票は全員に交付するが、税務署提出は金額基準超の人だけ。さらに市区町村への給与支払報告書は全員分（第16章）。同じ帳票データに対して<strong>3つの宛先ごとに独立した提出可否フラグ</strong>を持たせ、「交付済み＝提出済み」と短絡させない。(2) <strong>提出範囲の閾値は年度・区分パラメータ</strong>——役員150万円／一般500万円といった基準は法改正で動く。ハードコードせず、年度×区分（役員・士業・一般・年調未了）のテーブルで持つ（第26章の年度パラメータ化と同じ思想）。(3) <strong>給与系と報酬系は別パイプラインだが合計表で合流</strong>——源泉徴収票（雇用）と支払調書（業務委託）は入力元が別（給与計算 vs 支払管理）だが、法定調書合計表で件数・金額を集計して1つの提出単位になる。合計表を「各調書の件数・金額の集約ビュー」として設計し、個票と合計の数字が必ず一致する検算をCIに入れておくと、提出後の税務署からの照会を未然に防げます。</aside>
+
+        <div class="check-wrap"><h3>理解度チェック</h3>
+          <details class="check"><summary>Q1. 田中さん（現勤務先の給与380万円）の源泉徴収票は、税務署へ提出されますか。市区町村へはどうですか。</summary><p>税務署へは提出されません（年末調整をした一般従業員は支払金額500万円超が提出基準で、380万円は基準以下）。ただし本人へは交付され、市区町村へは給与支払報告書として全員分提出されます。宛先ごとに提出範囲が違うのがポイントです。</p></details>
+          <details class="check"><summary>Q2. 税務署へは基準超の人だけ、市区町村へは全員分を出すのはなぜですか。</summary><p>住民税は全給与所得者に課税するため市区町村が全員の所得情報を必要とするのに対し、所得税の捕捉は高額者・年末調整未了者に重点化すれば足りるためです。同じ年末調整データでも、宛先の税の性質によって必要な範囲が異なります。</p></details>
+          <details class="check"><summary>Q3. 法定調書合計表とは何を集めた書類ですか。給与以外に何が含まれますか。</summary><p>会社が1年間に支払った給与・報酬等の総額・人数・源泉徴収税額を集計したサマリー（表紙）です。給与の源泉徴収票のほか、外部の個人・法人へ支払った報酬・料金の支払調書、不動産使用料の支払調書なども集約され、翌年1月31日までに税務署へ提出されます。</p></details>
+        </div>
+      </section>
+
+      <section class="chapter" id="ch18">
+        <h2>第18章　社会保険との関係 ——「年収の壁」の正体</h2>
+        <div class="chap-map"><strong>この章の位置づけ：</strong>本書のハイライトの一つです。世間で語られる「103万円の壁」「106万円の壁」「130万円の壁」「150万円／160万円／178万円の壁」——これらは<strong>税の壁と社会保険の壁がごちゃ混ぜ</strong>になって語られています。混乱の根本原因は、<strong>税（所得税・住民税）と社会保険（健康保険・年金）が別制度</strong>だということ。この章ではまず両制度を分離し、そのうえで「壁」を税の壁と社保の壁に整理し直します。年末調整プロダクトが扱うのは税の壁だけ、という切り分けも重要です。</div>
+
+        <p>まず大原則。<strong>税と社会保険は、目的も、計算方法も、判定基準も、担当する行政も違う別制度</strong>です。年末調整は<strong>税（所得税）</strong>の手続きであり、社会保険料は「社会保険料控除」として税計算の<strong>入力になるだけ</strong>（第8章）。社会保険の加入判定そのものは年末調整では行いません。この分離を頭に入れて、「壁」を解体していきます。</p>
+        <div class="scroll-x"><table>
+          <tr><th></th><th>税（所得税・住民税）</th><th>社会保険（健康保険・厚生年金）</th></tr>
+          <tr><td>目的</td><td>所得に応じた税負担</td><td>医療・年金などの保険給付の財源</td></tr>
+          <tr><td>判定の単位</td><td>1年間の合計所得（暦年で確定）</td><td>加入時点の見込み年収・労働時間など</td></tr>
+          <tr><td>「壁」の性質</td><td>控除を超えた分だけ課税（なだらか）</td><td>基準を超えると保険料負担が発生（段差）</td></tr>
+          <tr><td>年末調整との関係</td><td>年末調整そのもの</td><td>払った保険料が社会保険料控除の入力になるだけ</td></tr>
+          <tr><td>主な担当</td><td>税務署・市区町村</td><td>年金事務所・健康保険組合</td></tr>
+        </table></div>
+
+        <h3>税の壁 —— じつは「壁」ではなく「坂」</h3>
+        <p>いわゆる「103万円の壁」は税の話です。ただし正確には、税の壁は<strong>越えたら手取りが激減する断崖ではなく、越えた分にだけ税がかかる緩やかな坂</strong>です。給与収入が一定額を超えると所得税が発生し始めますが、それは「超過分×税率」で少額から始まるので、収入が増えれば手取りも増えます。かつての「103万円」は〈給与所得控除55万円＋基礎控除48万円〉の合計＝課税所得ゼロの上限でした。ここが令和の改正で大きく動きました<span class="year-note">下表は本人の所得税がかかり始める課税最低限。令和7年度・令和8年度改正の反映値。金額は国税庁の最新情報で要確認。</span>。</p>
+        <div class="scroll-x"><table>
+          <tr><th>年分</th><th>課税最低限（本人に所得税がかかり始める給与収入）</th><th>内訳</th></tr>
+          <tr><td>令和6年分以前</td><td>103万円</td><td>給与所得控除55万円＋基礎控除48万円</td></tr>
+          <tr><td>令和7年分</td><td>160万円</td><td>給与所得控除65万円＋基礎控除95万円（合計所得132万円以下の額）</td></tr>
+          <tr><td>令和8年分以後</td><td>178万円</td><td>給与所得控除（特例74万円）＋基礎控除（特例104万円相当）※特例的な先取り</td></tr>
+        </table></div>
+        <p>「103万円の壁がなくなった／160万円・178万円に上がった」というニュースは、この<strong>課税最低限の引き上げ</strong>のこと（第21・22章で詳述）。第6章で見た基礎控除の引き上げ・扶養親族等の所得要件の緩和（103万円→123万円相当）と同根の改正です。<strong>これらはすべて「税」の壁</strong>で、年末調整の計算に直結します。</p>
+        <div class="year-note" style="display:block; border-radius:6px; padding:0.5rem 0.9rem; margin:0.8rem 0">配偶者に関する「壁」も税の壁です。配偶者控除・配偶者特別控除により、配偶者の給与収入がいわゆる150万円までは満額の控除、そこから段階的に逓減（第6章）。「150万円の壁」はこの配偶者特別控除の満額ラインを指し、本人の課税最低限とは別の壁である点に注意。</div>
+
+        <h3>社保の壁 —— こちらは本物の「段差」</h3>
+        <p>一方、<strong>106万円の壁・130万円の壁は社会保険</strong>の話で、税とはまったく別物です。そしてこちらは税の坂と違い、<strong>越えた瞬間に保険料負担が発生する段差</strong>になり得ます。パートで働く人が一定の要件を満たすと、扶養（配偶者の被扶養者）を外れて自分で健康保険・厚生年金に加入し、保険料を負担することになるからです。</p>
+        <div class="scroll-x"><table>
+          <tr><th>壁</th><th>制度</th><th>内容</th></tr>
+          <tr><td>106万円の壁</td><td>社会保険（被用者保険の加入）</td><td>一定規模以上の勤務先で、週20時間以上・月額賃金8.8万円以上など所定の要件を満たすと、勤務先の社会保険に加入して保険料負担が生じる</td></tr>
+          <tr><td>130万円の壁</td><td>社会保険（被扶養者の判定）</td><td>年収130万円以上の見込みになると、配偶者等の被扶養者から外れ、自分で国民健康保険・国民年金または勤務先の社会保険に加入する必要が生じる</td></tr>
+        </table></div>
+        <p>社保の壁が「段差」なのは、税の坂と決定的に違うところです。130万円をわずかに超えて被扶養者を外れると、それまでゼロだった社会保険料（年十数万円規模）が急に発生し、<strong>手取りが逆転して減る</strong>ことすらある。これが「働き控え（就業調整）」の主因です。ただしこの領域は動いています<span class="year-note">令和7年（2025年）の年金制度改正で、106万円の賃金要件（月額8.8万円）は段階的に撤廃、企業規模要件も縮小・撤廃の方向。制度は移行中のため、勤務先要件・時期は厚生労働省の最新情報で確認すること。</span>。国は「年収の壁・支援強化パッケージ」などで段差の緩和を進めています。</p>
+
+        <h3>二つの壁を一枚に重ねる</h3>
+        <p>混乱の元は、性質の違う壁を同じ数直線に並べてしまうことです。分けて描けばこうなります。</p>
+        <div class="scroll-x"><table>
+          <tr><th>年収の目安</th><th>税の壁</th><th>社保の壁</th></tr>
+          <tr><td>〜103万円（旧）</td><td>本人に所得税がかからない上限（旧課税最低限）</td><td>—</td></tr>
+          <tr><td>106万円</td><td>—</td><td>要件を満たすと勤務先の社会保険に加入（段差）</td></tr>
+          <tr><td>130万円</td><td>—（扶養親族等の所得要件は123万円相当へ緩和＝第6章）</td><td>被扶養者を外れ自分で社会保険に加入（段差）</td></tr>
+          <tr><td>150万円</td><td>配偶者特別控除が満額の上限（配偶者側の壁）</td><td>—</td></tr>
+          <tr><td>160万円（R7）／178万円（R8）</td><td>本人に所得税がかかり始める課税最低限（新）</td><td>—</td></tr>
+        </table></div>
+        <p>この表が本章の結論です。<strong>103・150・160・178万円は税の壁、106・130万円は社保の壁</strong>。前者は年末調整の計算に乗る緩やかな坂、後者は年末調整の外側にある段差。田中さん（弟・翔＝大学生アルバイト年150万円）の「壁」も、特定親族特別控除（税＝第6章）と、翔自身の社会保険加入（社保）を分けて考える必要があります。同じ「150万円」でも、翔の税の話と、翔を扶養する田中さんの税の話と、翔の社保の話は全部別レイヤーなのです。</p>
+
+        <aside class="engineer-note"><span class="tag">ENGINEER'S NOTE — 年末調整プロダクトが「触れてよい壁」の境界</span>
+        「年収の壁」機能を作るとき、最初に引くべき線は<strong>この機能は税の壁しか正確に計算できない</strong>という自覚です。要点を3つ。(1) <strong>税の壁は年末調整ロジックの内側、社保の壁は外側</strong>——課税最低限・配偶者特別控除の逓減は申告データと年度パラメータから確定的に計算できる。一方、106万・130万の判定は勤務先の企業規模・労働時間・見込み年収など<strong>年末調整が保持しないデータ</strong>に依存する。社保の壁を年調データだけで「判定」すると誤案内になるため、<strong>参考情報として明示的に区別して表示</strong>し、確定判定は社会保険の所管（年金事務所・健保）に委ねる設計にする。(2) <strong>社会保険料は控除の入力であって加入判定ではない</strong>——年末調整が社保に触れるのは「払った保険料額を社会保険料控除に入れる」一点のみ（第8章）。この一方向の依存を、加入可否ロジックと混同しない。(3) <strong>壁の閾値は税・社保で別テーブル・別改正サイクル</strong>——税の壁は税制改正（毎年）、社保の壁は年金制度改正（別サイクル・移行措置あり）で動く。103→160→178の税側と、106万要件の撤廃という社保側を、<strong>別々の根拠・別々の施行時期のパラメータ</strong>として管理する。「年収の壁シミュレータ」を作るなら、税の坂と社保の段差を別レイヤーで重ね描きし、どこからが自社の計算責任外かを画面上で明示するのが、誤解を生まない誠実な実装です。</aside>
+
+        <div class="check-wrap"><h3>理解度チェック</h3>
+          <details class="check"><summary>Q1. 「103万円の壁」と「130万円の壁」は同じ性質の壁ですか。</summary><p>いいえ、別制度の壁です。103万円は税（本人の所得税がかかり始める課税最低限）で、超えた分にだけ課税される緩やかな坂です。130万円は社会保険（被扶養者から外れる基準）で、越えると保険料負担が発生し得る段差です。税と社保を混同しないことが肝心です。</p></details>
+          <details class="check"><summary>Q2. 令和7年分・令和8年分で、本人に所得税がかかり始める給与収入はいくらですか。</summary><p>令和7年分は160万円（給与所得控除65万円＋基礎控除95万円）、令和8年分以後は178万円（特例的な引き上げ）です。旧来の103万円から引き上げられました。これは税の壁で、年末調整の計算に直結します（第21・22章）。</p></details>
+          <details class="check"><summary>Q3. 年末調整プロダクトは「106万円の壁」を正確に判定できますか。</summary><p>できません。106万・130万の社保の壁は、勤務先の企業規模・労働時間・見込み年収など年末調整が保持しないデータに依存するためです。年末調整が社保に関わるのは「払った社会保険料を社会保険料控除の入力にする」一点だけで、加入判定は社会保険の所管に委ねるべきです。</p></details>
+        </div>
+      </section>
+
+      <section class="chapter" id="ch19">
+        <h2>第19章　マイナンバーと電子化</h2>
+        <div class="chap-map"><strong>この章の位置づけ：</strong>ここまでの章で、年末調整データが税務署（第17章）や市区町村（第16章）へ流れる経路を見てきました。この章は、その<strong>データの中身（マイナンバー）</strong>と<strong>流れる形（電子化）</strong>にフォーカスします。番号の本人確認・収集・秘匿管理という実務と、年調ソフト・e-Tax／eLTAX・電子的控除証明書という電子化の全体像を押さえます。第4部の締めくくりとして、年末調整が紙からデータへ移行していく現在地を確認します。</div>
+
+        <h3>マイナンバー —— なぜ集めるのか、どう扱うのか</h3>
+        <p>源泉徴収票や給与支払報告書には、従業員本人と扶養親族の<strong>マイナンバー（個人番号）</strong>を記載します。国が個人を<strong>名寄せ</strong>して所得を正確に把握するためです。マイナンバーがあれば、複数の勤務先からの給与、税務署の源泉徴収票、市区町村の給与支払報告書を<strong>同一人物として突合</strong>できます。第16・17章で見た「同じ人のデータが複数の宛先へ流れる」構図を、確実に一人へ結び付ける鍵がマイナンバーです。</p>
+        <p>だからこそ番号の取り扱いは厳格です。会社は年末調整でマイナンバーを収集する際、<strong>①利用目的の明示、②本人確認（番号確認＋身元確認）、③安全管理措置</strong>を求められます。マイナンバーは<strong>特定個人情報</strong>として一般の個人情報より強く保護され、法定の事務（税・社保）以外への利用は禁止です。</p>
+        <div class="scroll-x"><table>
+          <tr><th>実務ステップ</th><th>内容</th></tr>
+          <tr><td>利用目的の明示</td><td>「年末調整・源泉徴収票作成のため」など、番号を使う事務を本人へ通知・公表</td></tr>
+          <tr><td>番号確認</td><td>提示された番号が正しいことを確認（マイナンバーカード・通知カード＋等）</td></tr>
+          <tr><td>身元確認</td><td>番号の持ち主が本人であることを確認（顔写真付き証明書等。カードなら1枚で両方充足）</td></tr>
+          <tr><td>安全管理措置</td><td>アクセス制限・暗号化・保管区域の管理・不要になった番号の廃棄など</td></tr>
+        </table></div>
+
+        <aside class="engineer-note"><span class="tag">ENGINEER'S NOTE — 特定個人情報の秘匿管理と「最小権限」</span>
+        マイナンバーを扱うシステムは、通常の個人情報とは別格の設計が要ります。要点を4つ。(1) <strong>分離・暗号化保管</strong>——番号本体は業務DBと分け、暗号化して保管。画面表示は原則マスキング（下4桁のみ等）し、平文を扱えるのは必要な事務・必要な瞬間だけにする。(2) <strong>最小権限とアクセスログ</strong>——誰が・いつ・どの番号を参照したかを全件ログ化。ロールで参照可否を絞り、開発者が本番の番号を見られない運用にする（マスキング済みテスト環境）。(3) <strong>ライフサイクル管理</strong>——法定保存期間を過ぎた番号は<strong>確実に廃棄・削除</strong>する。番号は「持ち続けるほどリスク」なので、保持期限を属性として持ち、自動失効させる。(4) <strong>収集チャネルの本人確認</strong>——オンライン収集ではマイナンバーカードのICチップ読み取り（公的個人認証）で番号確認＋身元確認を一度に満たせる。扶養親族の番号は<strong>本人が確認する</strong>建付け（会社は扶養親族本人の身元確認までは不要）である点も、収集フローの分岐として実装に効きます。特定個人情報保護は「集めない・見せない・残さない」を既定値にするのが、事故を構造的に防ぐ設計思想です。</aside>
+
+        <h3>電子化 —— 紙の年末調整がデータになる</h3>
+        <p>年末調整は長らく紙の申告書で回してきましたが、近年は電子化が進みました。全体像を、従業員側・会社側・行政側の3レイヤーで捉えると整理できます。</p>
+        <div class="flow-diagram"><div class="flow-v" style="max-width:40rem">
+          <div class="flow-stage">従業員：年調ソフト等で申告書を電子作成<span class="sub">控除証明書は電子データ（XML）で取り込み → 控除額を自動計算</span></div>
+          <div class="flow-op"></div>
+          <div class="flow-stage">会社：申告データを電子的に受領し年末調整<span class="sub">源泉徴収票・給与支払報告書・法定調書を電子生成</span></div>
+          <div class="flow-op"></div>
+          <div class="flow-stage result">行政：e-Tax（税務署）／eLTAX（市区町村）で電子提出</div>
+        </div></div>
+        <p>それぞれのピースを見ておきます。</p>
+        <ul>
+          <li><strong>年調ソフト</strong>：国税庁が無償提供する年末調整申告書作成ソフト。従業員が各種申告書（マル扶・マル保・マル基配所など＝第12章）を画面で作成し、控除額を自動計算して電子データで会社へ提出できます。</li>
+          <li><strong>電子的控除証明書</strong>：生命保険料控除・地震保険料控除・住宅ローン控除（残高証明）などの証明書を、保険会社・金融機関が<strong>電子データ（XML）</strong>で発行。従業員はマイナポータル等で受け取り、年調ソフトへ<strong>読み込むだけで控除額が計算</strong>されます。第8章で見た保険料控除の計算式を、人が転記せずデータが埋める形です。</li>
+          <li><strong>e-Tax</strong>：国税（税務署）向けの電子申告・提出システム。法定調書・源泉徴収票（第17章）などを電子提出します。</li>
+          <li><strong>eLTAX（エルタックス）</strong>：地方税向けの電子申告・提出システム。給与支払報告書（第16章）を各市区町村へ電子提出し、特別徴収税額決定通知も電子的に受領できます。</li>
+        </ul>
+        <p>電子化の意義は単なるペーパーレスではありません。<strong>証明書の数値が人手を介さずデータで流れる</strong>ことで、転記ミス（第25章で扱う実装の落とし穴の多くは転記由来）が構造的に減ります。控除証明書のXMLを読み込めば、第8章の生命保険料控除の新旧区分や計算式もソフトが判定してくれる。年末調整の電子化とは、<strong>これまで紙と人がつないでいた計算チェーンを、データで直結する</strong>取り組みなのです。</p>
+
+        <aside class="engineer-note"><span class="tag">ENGINEER'S NOTE — 電子データ連携の3つのフォーマットとインポート設計</span>
+        年末調整プロダクトの電子化対応は、<strong>複数の標準フォーマットを扱う統合基盤</strong>の設計に帰着します。押さえどころを3つ。(1) <strong>宛先ごとにフォーマットとエンドポイントが違う</strong>——控除証明書は保険会社発行の<strong>XML</strong>、税務署提出はe-Taxのレイアウト、市区町村提出はeLTAXのレイアウト。「年調結果」という単一の内部モデルから、各提出先の仕様へ<strong>変換する出力アダプタ</strong>を分離しておく（第24章の入力→計算→出力パイプラインの出力段）。(2) <strong>控除証明書XMLは「検証してから信じる」</strong>——電子証明書には署名・発行者情報がある。取り込み時にスキーマ検証と改ざんチェックを通し、金額をそのまま控除計算の入力にする。ユーザーの手入力値とデータ取り込み値を区別できるよう、<strong>入力ソースを属性として保持</strong>すると監査で効く。(3) <strong>年調ソフトの標準データとの相互運用</strong>——国税庁の年調ソフトが出力する申告データ形式に合わせておくと、自社UIで作った申告データと国税庁ソフトのデータを同じインポート経路で受けられる。電子化は「1つの内部モデル × 複数の外部フォーマット」という<strong>ハブ＆スポーク</strong>で設計するのが、毎年の様式変更（第26章）にも耐える形です。</aside>
+
+        <div class="check-wrap"><h3>理解度チェック</h3>
+          <details class="check"><summary>Q1. 源泉徴収票や給与支払報告書にマイナンバーを記載するのはなぜですか。</summary><p>国が個人を名寄せして所得を正確に把握するためです。マイナンバーがあれば、複数勤務先の給与、税務署の源泉徴収票、市区町村の給与支払報告書を同一人物として突合できます。だからこそ番号は特定個人情報として厳格に管理され、本人確認（番号確認＋身元確認）と安全管理措置が求められます。</p></details>
+          <details class="check"><summary>Q2. e-TaxとeLTAXは、それぞれ何を提出するシステムですか。</summary><p>e-Taxは国税（税務署）向けで、法定調書や源泉徴収票などを電子提出します。eLTAXは地方税（市区町村）向けで、給与支払報告書を電子提出し、特別徴収税額決定通知の電子受領もできます。第16・17章のデータフローが、それぞれ別の電子経路に対応します。</p></details>
+          <details class="check"><summary>Q3. 電子的控除証明書を使うと、年末調整の何が楽になりますか。</summary><p>保険会社・金融機関が発行する控除証明書のXMLを年調ソフトに読み込むと、控除額が自動計算されます（第8章の保険料控除の新旧区分や計算式もソフトが判定）。人が数値を転記する必要がなくなり、転記ミスが構造的に減ります。紙と人がつないでいた計算チェーンをデータで直結するのが電子化の本質です。</p></details>
+        </div>
+      </section>
+
+      <!-- ============ 第5部 ============ -->
+      <section class="part-cover" id="part5"><h2>第5部　歴史と変化</h2></section>
+
+      <section class="chapter" id="ch20">
+        <h2>第20章　年末調整の歴史</h2>
+        <div class="chap-map"><strong>この章の位置づけ：</strong>ここまでの章は「いまの制度がどう動くか」を扱ってきました。第5部では視点を時間軸に移します。この章はその出発点として、<strong>なぜ日本では「会社が従業員の所得税を精算する」という一見不思議な仕組みが当たり前なのか</strong>を、歴史からたどります。源泉徴収と年末調整は、もともと別の目的で生まれた別の制度でした。その成り立ちを知ると、以降の章で扱う「毎年の改正」が、この制度の骨格の上でどこをいじっているのかが立体的に見えてきます。</div>
+
+        <p>本書をここまで読んだあなたは、月次で概算徴収し（第2章）、年末に精算する（第3章）という二段構えを、もう当然のものとして受け止めているはずです。しかしこれは決して「自然」な仕組みではありません。世界を見渡せば、給与から税を天引きする国は多くても、<strong>会社が年末に一人ひとりの所得税を確定させてしまう</strong>国は少数派です。なぜ日本はこうなったのか。答えは、戦争と戦後復興という歴史的事情の中にあります。</p>
+
+        <h3>源泉徴収制度の導入 —— 戦費調達という出発点</h3>
+        <p>日本の給与に対する源泉徴収は、<strong>1940年（昭和15年）</strong>の税制改正で本格導入されました。時代背景は日中戦争のさなかで、政府は膨張する戦費をまかなうため、税収を「早く・確実に・薄く広く」集める仕組みを必要としていました。給与を支払う側（会社）に天引きと納付を義務づければ、国は個々の労働者から取り立てる手間なく、給料日ごとに税を吸い上げられます。この「支払う側に徴収させる」という発想が、第2章で学んだ<a class="term" href="#g-gensen">源泉徴収</a>義務者の原型です。</p>
+        <p>もともとこの方式はドイツの制度を参考にしたものでした。徴税コストを国から民間（雇用主）へ転嫁し、しかも取りはぐれが少ない——徴税の効率という一点において、源泉徴収は極めて優秀な発明です。だからこそ戦後も廃止されず、むしろ制度の中心に据えられていきます。</p>
+
+        <aside class="engineer-note"><span class="tag">ENGINEER'S NOTE — 「徴収義務の外部委託」というアーキテクチャ</span>
+        源泉徴収を設計思想として眺めると、これは<strong>国家が担うべき徴税処理を、給与支払者という多数のノードへ分散委託したアーキテクチャ</strong>だと読めます。国は各社が正しく計算・納付しているかを検証すればよく、個々の納税者と直接トランザクションを張る必要がない。スケールの観点では理にかなっていますが、副作用として<strong>計算ロジックの正しさを担保する責任が民間側（＝私たちが作るプロダクト）へ移譲される</strong>。年末調整プロダクトのバグが「一社の不具合」で済まず「納税額の誤り」に直結するのは、この歴史的な責任移譲の帰結です。制度の重さは、その出自から来ています。</aside>
+
+        <h3>年末調整の誕生 —— 概算徴収の「後始末」として</h3>
+        <p>源泉徴収には構造的な弱点があります。毎月の天引きはあくまで概算です（第3章）。扶養の状況や生命保険料などの個人の事情は、給料日の時点では正確に反映しきれません。放っておけば、年間の天引き合計と本来の税額との間に必ずズレが出ます。このズレを各人が自分で確定申告して精算する——というのが本来の姿ですが、それでは源泉徴収で稼いだ「効率」が台無しです。全国民が申告に殺到すれば税務署がパンクします。</p>
+        <p>そこで<strong>1947年（昭和22年）</strong>、精算そのものも会社にやらせる仕組みが導入されました。これが<a class="term" href="#g-nencho">年末調整</a>です。徴収を委託したのだから、精算も委託してしまえばよい——年末調整は、源泉徴収という効率追求の論理を最後まで貫いた結果として生まれた、いわば「概算徴収の後始末を雇用主に押し付ける制度」なのです。第3章で見た還付・追徴の仕組みは、この後始末を数字で表したものにほかなりません。</p>
+        <div class="scroll-x"><table>
+          <tr><th>年</th><th>できごと</th><th>意味</th></tr>
+          <tr><td>1940年（昭15）</td><td>給与への源泉徴収を本格導入</td><td>戦費調達。徴税を雇用主へ委託</td></tr>
+          <tr><td>1947年（昭22）</td><td>年末調整を導入</td><td>概算徴収の精算も雇用主へ委託</td></tr>
+          <tr><td>1950年（昭25）</td><td>シャウプ勧告後の税制で定着</td><td>申告納税を原則としつつ給与は源泉＋年調で完結</td></tr>
+        </table></div>
+        <p>戦後のシャウプ勧告（1949年）は本来「申告納税」を民主的な税制の柱としました。しかし給与所得者については、源泉徴収と年末調整で納税がほぼ完結する仕組みが温存されます。結果として日本は、<strong>建前は申告納税、実態は多くの給与所得者が申告せずに済む</strong>という二重構造を持つことになりました。この構造こそ、第23章で扱う「年末調整不要論」の火種でもあります。</p>
+
+        <h3>なぜ日本は「会社が税を精算する」国なのか —— 諸外国との比較</h3>
+        <p>天引き（源泉徴収）自体は多くの国にあります。違うのは<strong>「精算まで会社がやるか」</strong>です。ここで各国を並べてみましょう<span class="year-note">制度の大枠を示すための概観であり、細部は各国の改正で変わります。</span>。</p>
+        <div class="scroll-x"><table>
+          <tr><th>国</th><th>給与天引き</th><th>年末の精算</th><th>多くの給与所得者は…</th></tr>
+          <tr><td>日本</td><td>あり</td><td><strong>会社が年末調整</strong></td><td>申告不要で完結</td></tr>
+          <tr><td>ドイツ</td><td>あり</td><td>原則は本人が申告（会社精算の制度も過去にあったが縮小）</td><td>還付目当てに申告する人が多い</td></tr>
+          <tr><td>イギリス</td><td>あり（PAYE）</td><td>税務当局側が名寄せして精算</td><td>多くは申告不要だが精算主体は当局</td></tr>
+          <tr><td>アメリカ</td><td>あり</td><td>本人が確定申告（4月）</td><td>ほぼ全員が申告</td></tr>
+        </table></div>
+        <p>ポイントは2つです。第一に、<strong>「申告不要で完結する」という点なら日本とイギリスは似ています</strong>。ただしイギリスのPAYE（Pay As You Earn）は、精算の主体が<strong>税務当局</strong>である点が決定的に違います。日本は精算の主体が<strong>民間企業</strong>なのです。第二に、アメリカは天引きこそすれ精算は各人の確定申告に委ねており、日本とは正反対の思想です。</p>
+        <p>つまり「会社が一人ひとりの年税額を確定させる」という日本の年末調整は、国際的に見てもかなり特徴的な制度です。徴税コストを極限まで下げる代わりに、そのコストと責任を企業（と、そのシステムを作る私たち）が引き受けている——この非対称性が、日本の年末調整の本質です。第23章で触れる「不要論」も「デジタル化」も、突き詰めればこの非対称性をどう組み替えるかの議論だと捉えると見通しがよくなります。</p>
+
+        <aside class="engineer-note"><span class="tag">ENGINEER'S NOTE — 制度の「思想」がデータモデルを決める</span>
+        精算主体が誰かは、そのままシステムの持ち主が誰かを決めます。アメリカ型なら「個人が自分の申告ソフトで完結」、イギリス型なら「当局が全国民の給与データを名寄せする巨大な国側システム」、日本型なら「各企業が自社従業員分の年調エンジンを持つ」。私たちが年末調整プロダクトを作れるのは、日本が<strong>精算処理を分散して民間に委ねた</strong>からです。逆に言えば、もし将来イギリス型（当局主導の名寄せ精算）へ寄れば、プロダクトの役割は「年税額を確定する計算機」から「当局へ正確なデータを渡すコネクタ」へ変質します。歴史を知ることは、自分たちのプロダクトが将来どの方向に押されうるかを知ることでもあります（第23章）。</aside>
+
+        <details class="check"><summary>Q1. 日本の給与に対する源泉徴収は、もともと何のために導入されましたか。</summary><p>1940年（昭和15年）、日中戦争下で膨張する戦費を「早く・確実に」調達するために導入されました。給与を支払う会社に天引きと納付を義務づけ、国が個々の労働者から取り立てる手間を省く狙いです。この「支払う側に徴収させる」仕組みが源泉徴収義務者の原型になりました。</p></details>
+        <details class="check"><summary>Q2. 年末調整は、源泉徴収とはどういう関係で生まれた制度ですか。</summary><p>源泉徴収の毎月の天引きは概算にすぎず、年間で必ず本来の税額とのズレが生じます。そのズレを各人の確定申告で精算させると税務署がパンクするため、1947年（昭和22年）に精算そのものも会社に委ねる仕組みとして年末調整が導入されました。徴収を委託したのだから精算も委託する、という効率追求の延長線上にあります。</p></details>
+        <details class="check"><summary>Q3. 「会社が年末調整で税を精算する」点で、日本はイギリスやアメリカとどう違いますか。</summary><p>天引き自体は各国にありますが、精算の主体が違います。アメリカは各人が確定申告して精算し、イギリスは天引き（PAYE）はあるものの精算主体は税務当局です。日本だけが精算主体を民間企業（雇用主）に置いています。徴税コストを極限まで下げる代わりに、その責任を企業側が引き受けている点が特徴です。</p></details>
+      </section>
+
+      <section class="chapter" id="ch21">
+        <h2>第21章　近年の改正の流れ</h2>
+        <div class="chap-map"><strong>この章の位置づけ：</strong>第20章で制度の骨格ができるまでをたどりました。この章は、その骨格の上でこの10年ほどに起きた<strong>大きな改正の流れ</strong>を、一本の線として整理します。個々の改正は第6章（人的控除）や第18章（年収の壁）ですでに部品として登場しましたが、ここでは「なぜその順番でその改正が必要だったのか」という<strong>制度意図の連なり</strong>として読み直します。この線がつかめると、次章（令和8年分）の改正が唐突な変更ではなく、続いてきた流れの一区切りだと分かります。</div>
+
+        <p>近年の改正には、実は一貫したテーマがあります。<strong>「働き方に中立な税制へ」</strong>と<strong>「高所得層への集中と低・中所得層への配慮」</strong>、そして最近では<strong>「物価上昇への対応」</strong>です。この3つを念頭に、時系列で追ってみましょう。</p>
+
+        <h3>平成30年 —— 配偶者控除の見直し（「103万円の壁」への最初の一手）</h3>
+        <p>2018年（平成30年）分から、<a class="term" href="#g-haigusha">配偶者控除</a>・<a class="term" href="#g-haigushatokubetsu">配偶者特別控除</a>が大きく組み替えられました。改正の狙いは、いわゆる<strong>「103万円の壁」による就業調整をやわらげる</strong>ことです。それまで配偶者特別控除は配偶者の給与収入141万円未満までで先細りしていましたが、これを<strong>150万円まで満額（38万円）</strong>、201万円まで先細りへと拡大しました。パート収入を103万円に抑えようとする心理的な壁を、制度側からなだらかにしたわけです。</p>
+        <p>同時に、それまで所得制限のなかった配偶者控除に<strong>本人（納税者側）の所得制限</strong>が入りました。合計所得900万円（給与収入約1,120万円）を超えると控除額が逓減し、1,000万円超で消滅します。第6章で見た「本人所得×配偶者所得の二次元マトリクス」は、このとき生まれた形です。<strong>「配偶者への配慮は残すが、高所得世帯には絞る」</strong>——集中と配慮というテーマの最初の現れでした。</p>
+
+        <h3>令和2年 —— 給与所得控除・基礎控除の「振替」</h3>
+        <p>2020年（令和2年）分の改正は、一見地味ですが構造的に重要です。<strong>給与所得控除を一律10万円引き下げ、その分を基礎控除に10万円上乗せ（38万円→48万円）</strong>しました。プラスマイナスゼロの「振替」です。なぜこんなことをしたのか。</p>
+        <p>狙いは<strong>働き方の中立性</strong>です。給与所得控除は会社員だけが受けられる控除ですが、フリーランスや副業で働く人が増える中、「雇われて働く人だけが優遇される」構造は時代に合わなくなっていました。そこで<strong>誰にでも効く基礎控除へ重心を移す</strong>ことで、雇用形態による有利・不利を薄めたのです。第1章で「基礎控除は誰にでも一律」と学びましたが、その基礎控除が近年重みを増しているのは、この振替が出発点です。</p>
+        <p>ただし振替には仕掛けがありました。給与所得控除には<strong>上限（195万円）</strong>が設けられ、基礎控除には<strong>高所得での逓減・消滅</strong>（合計所得2,400万円超で減り始め2,500万円超でゼロ）が導入されました。低・中所得層は振替で損得ゼロ、高所得層は実質増税——ここでも「集中と配慮」が効いています。第5章で学んだ給与所得控除の上限も、この章末の基礎控除の逓減も、令和2年改正の産物です。</p>
+
+        <aside class="engineer-note"><span class="tag">ENGINEER'S NOTE — 「振替」は差分実装の教科書的ケース</span>
+        令和2年の振替は、実装から見ると<strong>2つのパラメータテーブルを同時に差し替える改正</strong>です。給与所得控除表と基礎控除額を別々に年度パラメータ化していれば、両方を新年度版に切り替えるだけで済みます。逆に、給与所得控除の最低保障額や基礎控除額を<strong>コード中にリテラルで埋め込んでいた</strong>としたら、この改正で複数箇所を手当てする羽目になり、片方だけ直し忘れて「振替の帳尻が合わない」バグを生みます。基礎控除に高所得逓減が入った点も重要で、「基礎控除＝定数48万」という素朴なモデルが、この改正で<strong>合計所得を引数に取る関数</strong>へ格上げされました。改正の歴史は、しばしば「定数だったものが関数になる」歴史です（第26章）。</aside>
+
+        <h3>令和7年 —— 基礎控除引上げと特定親族特別控除（「103万円→160万円の壁」）</h3>
+        <p>そして2025年（令和7年）分。ここで流れが<strong>「物価上昇への対応」</strong>という新テーマへ切り替わります。長く据え置かれてきた課税最低限が、物価と最低賃金の上昇に取り残されている——この問題意識から、大幅な引上げが行われました。第6章・第7章で扱った数字を、改正の意図とともに振り返ります<span class="year-note">令和7年分時点。詳細な区分表は第7章参照。</span>。</p>
+        <ul>
+          <li><strong>基礎控除の引上げ</strong>：一律48万円だった基礎控除を、合計所得に応じて最大95万円まで引き上げ。特に低所得帯（合計所得132万円以下）を95万円と手厚くしました。ただし132万円超〜655万円以下の上乗せ（88／68／63万円）は<strong>令和7・8年分限定の特例</strong>という位置づけです。</li>
+          <li><strong>給与所得控除の最低保障額</strong>：55万円→<strong>65万円</strong>へ。</li>
+          <li><strong>扶養親族等の所得要件</strong>：合計所得48万円以下→<strong>58万円以下</strong>（給与収入なら103万円→123万円相当）へ。</li>
+        </ul>
+        <p>この「基礎控除の低所得帯95万円＋給与所得控除65万円」により、<strong>給与収入160万円までは所得税がかからない</strong>形になりました。これが「103万円の壁が160万円へ動いた」と報じられた正体です（第6章・第18章で計算済み）。</p>
+        <p>同時に創設されたのが<a class="term" href="#g-tokuteishinzoku">特定親族特別控除</a>です。扶養の所得要件を引き上げると、今度は<strong>大学生年代（19〜22歳）のアルバイト収入</strong>で新たな壁が生まれます。従来、特定扶養控除（63万円）は子の合計所得が一定を超えると<strong>ゼロに崖落ち</strong>しました。そこで、合計所得58万円超123万円以下の特定親族について、控除額をなだらかに先細りさせる制度を新設したのです。田中由紀さんの弟・翔（大学生・バイト年収150万円）が、まさにこの制度の検討対象でした（第6章）。</p>
+        <div class="scroll-x"><table>
+          <tr><th>改正年（適用）</th><th>主眼</th><th>代表的な変更</th><th>テーマ</th></tr>
+          <tr><td>平成30年分</td><td>配偶者</td><td>配偶者特別控除を150万円まで満額化／本人所得制限を導入</td><td>就業調整の緩和・集中と配慮</td></tr>
+          <tr><td>令和2年分</td><td>控除の重心</td><td>給与所得控除−10万／基礎控除+10万の振替。給与所得控除に上限、基礎控除に高所得逓減</td><td>働き方への中立</td></tr>
+          <tr><td>令和7年分</td><td>課税最低限</td><td>基礎控除引上げ（最大95万）／給与所得控除65万／所得要件123万相当／特定親族特別控除の創設</td><td>物価対応・壁対策（→160万）</td></tr>
+        </table></div>
+        <p>こうして並べると、近年の改正は行き当たりばったりではなく、<strong>「配偶者の壁 → 働き方の中立 → 物価対応」</strong>とテーマを移しながら、少しずつ課税最低限を引き上げてきたことが分かります。そして次章の令和8年分は、この令和7年の「物価対応」の続きです。壁は160万円からさらに<strong>178万円</strong >へ動きます。</p>
+
+        <details class="check"><summary>Q1. 令和2年分の「給与所得控除と基礎控除の振替」は何を狙った改正でしたか。</summary><p>給与所得控除を一律10万円下げ、基礎控除を10万円（38万→48万）上げる差引ゼロの振替です。狙いは働き方の中立性で、会社員だけが受けられる給与所得控除の重みを減らし、誰にでも効く基礎控除へ重心を移すことで、雇用形態による有利・不利を薄めました。あわせて給与所得控除に上限、基礎控除に高所得逓減が入り、高所得層には実質増税となりました。</p></details>
+        <details class="check"><summary>Q2. 令和7年分で「103万円の壁が160万円へ」と言われたのはなぜですか。</summary><p>基礎控除が低所得帯で95万円に、給与所得控除の最低保障額が65万円に引き上げられた結果、給与収入160万円まで（所得95万円−基礎控除95万円＝課税所得ゼロ）は所得税がかからなくなったためです。物価・最低賃金の上昇に取り残された課税最低限を引き上げる、という制度意図の現れです。</p></details>
+        <details class="check"><summary>Q3. 特定親族特別控除はなぜ令和7年に創設されたのですか。</summary><p>扶養の所得要件を引き上げると、大学生年代（19〜22歳）のアルバイト収入で新たな崖（特定扶養控除63万円がゼロに落ちる境目）が生まれます。それをなだらかにするため、合計所得58万円超123万円以下の特定親族について控除を先細りさせる制度として新設されました。壁の解消が別の壁を生むのを防ぐ「穴埋め」の制度です。</p></details>
+      </section>
+
+      <section class="chapter" id="ch22">
+        <h2>第22章　令和8年分の変更点</h2>
+        <div class="chap-map"><strong>この章の位置づけ：</strong>第21章で見た「物価対応」の流れが、令和8年分でもう一段進みます。この章は本書でもっとも改正情報が濃い章です。基礎控除・給与所得控除のさらなる引上げ（課税最低限が<strong>178万円</strong>へ）、扶養親族等の所得要件の再引上げ、申告書様式の変更（<strong>源泉控除対象親族</strong>の登場）、そして実務上いちばん厄介な<strong>「適用時期が令和8年分と令和9年分で分かれる」</strong>という論点を、一次情報にもとづいて丁寧にほどきます。数字だけでなく「令和8年の年末調整で現場が何につまずくか」を実装目線で押さえるのが本章の目的です。</div>
+
+        <p class="year-note-block year-note">本章は令和8年5月時点の国税庁一次情報（「令和8年度税制改正による所得税の基礎控除の引上げ等について」、「令和8年4月 源泉所得税の改正のあらまし」、および同Q&A）にもとづきます。令和8年度改正は<strong>令和8年12月1日施行・令和8年分以後適用</strong>で成立済みとして扱えます（RESEARCH.md 第0節）。ただし金額・様式は執筆時点のものであり、実装時は必ず nta.go.jp の最新版に当たり直してください。</p>
+
+        <h3>1. 何が変わるのか —— 令和8年度改正の全体像</h3>
+        <p>令和8年度改正の中身は、令和7年改正の「続き」です。物価上昇に連動して課税最低限をもう一段引き上げる、というのが基本線。主な変更は次の3点です。</p>
+        <div class="scroll-x"><table>
+          <tr><th>項目</th><th>令和7年分</th><th>令和8年分</th><th>ねらい</th></tr>
+          <tr><td>基礎控除（標準帯・合計所得655万円超2,350万円以下）</td><td>58万円（本則）</td><td><strong>62万円</strong>（本則。物価スライド+4万円）</td><td>物価連動</td></tr>
+          <tr><td>給与所得控除の最低保障額</td><td>65万円</td><td><strong>74万円</strong>（本則69万＋特例上乗せ。令和8・9年分限定）</td><td>低所得層の底上げ</td></tr>
+          <tr><td>扶養親族等の合計所得金額要件</td><td>58万円以下</td><td><strong>62万円以下</strong>（給与収入なら123万→引上げ相当）</td><td>要件の連動引上げ</td></tr>
+        </table></div>
+        <p><strong>課税最低限178万円</strong>という数字は、この改正が生む代表的な結果です。低所得帯の基礎控除（令和7・8年分の特例で厚い区分）と給与所得控除の特例最低保障額74万円を組み合わせると、給与収入178万円あたりまで所得税がかからない姿になります。「103万円の壁 → 令和7年で160万円 → 令和8年で178万円」という報道上の壁の変遷は、この積み上げの話です<span class="year-note">令和8年分時点</span>。</p>
+        <p class="year-note-block year-note">この「178万円の壁」も、あくまで<strong>所得税（国税）の壁</strong>です。住民税の非課税限度額や社会保険の106万・130万の壁とは別レイヤーであり、混同は禁物です（切り分けは第18章）。田中由紀さんの弟・翔のケースでも、翔の所得税・翔の社保・翔を扶養する田中さんの税は、それぞれ別の壁で判定します。</p>
+
+        <aside class="engineer-note"><span class="tag">ENGINEER'S NOTE — 「特例」と「本則」を型で区別する</span>
+        令和8年分は<strong>本則と特例の二層構造</strong>が随所に出ます。基礎控除は「標準帯の本則62万」＋「低所得帯の令和7・8年分限定の上乗せ」、給与所得控除の最低保障額は「本則69万」＋「令和8・9年分限定の特例で74万」。実装では、控除額を単なる年度パラメータとして持つだけでは不十分で、<strong>「その金額が恒久措置か時限措置か」というメタ情報</strong>まで持たせておくと、令和9年分以後の逓減（後述）を仕込むときに事故りません。素朴には <code>基礎控除(合計所得, 年分)</code> という関数ですが、内部では「本則テーブル＋その年分に有効な特例テーブル」を合成する、という二段構えにしておくのが安全です。改正の歴史は「定数→関数」でしたが（第21章NOTE）、令和8年は「関数→時限フラグ付き関数」へさらに一段複雑化します。</aside>
+
+        <h3>2. 最大の落とし穴 —— 月次源泉には反映されず、年末調整で精算</h3>
+        <p>ここが令和8年分でもっとも実務を混乱させる点であり、本章の核心です。<strong>改正項目のうち、令和8年分に適用されるものと、令和9年分から適用されるものが分かれています。</strong>国税庁のQ&A（Q1-1）にもとづき整理します。</p>
+        <div class="scroll-x"><table>
+          <tr><th>改正項目</th><th>施行日</th><th>適用</th></tr>
+          <tr><td>① 基礎控除の引上げ</td><td>令和8年12月1日</td><td><strong>令和8年分以後</strong></td></tr>
+          <tr><td>② 給与所得控除の最低保障額の引上げ＋「年末調整等のための給与所得控除後の給与等の金額の表」の改正</td><td>令和8年12月1日</td><td><strong>令和8年分以後</strong></td></tr>
+          <tr><td>③ 扶養親族等の所得要件の改正</td><td>令和8年12月1日</td><td><strong>令和8年分以後</strong></td></tr>
+          <tr><td>④ <strong>「源泉徴収税額表」（月次の税額表）の改正</strong></td><td>令和9年1月1日</td><td><strong>令和9年分以後</strong>（同日以後支払う給与）</td></tr>
+          <tr><td>⑤ 公的年金等の源泉徴収における基礎的控除額の引上げ</td><td>令和9年1月1日</td><td><strong>令和9年分以後</strong></td></tr>
+        </table></div>
+        <p>この表の意味を、給与の流れで言い直します。<strong>令和8年11月までの毎月の源泉徴収は、いっさい変わりません。</strong>月々の天引きに使う<a class="term" href="#g-zeigakuhyo">源泉徴収税額表</a>（月額表）の改正は令和9年1月からだからです（④）。ところが基礎控除・給与所得控除の引上げ（①②）は令和8年分にさかのぼって効きます。つまり——</p>
+        <div class="flow-diagram" role="img" aria-label="令和8年分の源泉徴収と年末調整の流れ。1月から11月までは改正前の税額表で毎月天引き。12月の年末調整で改正後の基礎控除と改正後の給与所得控除後の金額の表を使って1年分の税額を計算し、天引き合計との差を精算する。">
+          <div class="flow-v">
+            <div class="flow-stage">令和8年1月〜11月<span class="sub">改正前の源泉徴収税額表のまま毎月天引き（引上げは未反映）</span></div>
+            <div class="flow-op"><span class="times">↓ 引上げ分は月次に乗っていない</span></div>
+            <div class="flow-stage">令和8年12月 年末調整<span class="sub">改正後の基礎控除＋改正後の「年末調整等のための給与所得控除後の給与等の金額の表」で1年分の税額を計算</span></div>
+            <div class="flow-op"><span class="minus">− 改正前の税額表で天引きしてきた源泉税額合計</span></div>
+            <div class="flow-stage result">差額を年末調整で精算（多くは還付）</div>
+          </div>
+          <p class="flow-caption">令和8年分は、引上げ分がまるごと<strong>年末調整の精算</strong>に集約される。月次は据え置き、年末で一気に効く。</p>
+        </div>
+        <p>結果として、令和8年分の年末調整は<strong>「例年より還付が出やすい年」</strong>になる可能性があります。1年間ずっと引上げ前の高めの税額で天引きしておいて、年末に引上げ後の低い税額へ精算し直すからです。ちょうど第3章で学んだ「月次で無視されていた控除が年末にまとめて効くから戻る」という構造の、改正版だと考えてください。</p>
+        <p>なお、この二段階の分け方には行政側の事情があります。月次の税額表を年の途中で差し替えると、給与計算の現場に混乱が生じます。そこで<strong>「月次は年初（令和9年1月）まで据え置き、令和8年分の引上げは年末調整でまとめて反映する」</strong>という、現場負担の少ない移行を選んだわけです。制度の親切設計ですが、私たちのプロダクトから見ると「年をまたいで税額表の切替時期がずれる」という実装課題になります。</p>
+
+        <aside class="engineer-note"><span class="tag">ENGINEER'S NOTE — 「月次テーブル」と「年調テーブル」を別バージョン軸で持つ</span>
+        令和8年分の設計上の要点は、<strong>月次の源泉徴収税額表と、年末調整用の「給与所得控除後の給与等の金額の表」を、別々のバージョン軸で管理する</strong>ことです。素朴に「令和8年分パラメータ一式」を1つのバージョンにまとめてしまうと、この年は破綻します。なぜなら令和8年は<strong>月次＝改正前、年調＝改正後</strong>という食い違った状態が正解だからです。実装では、
+        <br>・月次計算が参照するのは「令和8年分（＝令和7年分と同じ）源泉徴収税額表」
+        <br>・年末調整計算が参照するのは「令和8年分の改正後・基礎控除／給与所得控除後の金額の表」
+        <br>と、<strong>同じ会計年度に対して2系統のテーブルを引き分ける</strong>必要があります。テストでは「令和8年の月次天引き合計」と「令和8年の年調年税額」がわざと食い違い、その差が還付として出ることを正しく検証する。ここを「バグでは？」と早合点して月次側を改正後にそろえてしまうと、天引き不足になり従業員から追徴、という逆事故を起こします。<strong>食い違いこそ仕様</strong>——このフレーズをコメントに残しておく価値があります。</aside>
+
+        <h3>3. 令和8年11月30日までに最後の給与を払った人は要注意</h3>
+        <p>改正（①②③）は<strong>令和8年12月1日施行</strong>です。年末調整は「その年最後の給与を支払う際」に行うため、<strong>年の途中で退職・死亡・海外転勤（非居住者化）などにより、令和8年11月30日以前に最後の給与を支払ってしまった人</strong>の年末調整には、改正後の基礎控除等は適用されません（Q&A Q1-3）。この人たちが引上げ後の控除を受けるには、<strong>本人が確定申告する</strong>必要があります。</p>
+        <p>実装上は、<strong>「その年最後の給与の支払日が12月1日以後か否か」で適用テーブルを分岐</strong>させる判定が要ります。判定基準日は退職日や在籍期間ではなく<strong>最終給与の支払日</strong>である点に注意してください。中途退職者の年末調整（第14章）を扱うロジックに、この年だけの追加ゲートが必要になります。</p>
+
+        <h3>4. 申告書様式の変更 —— 「源泉控除対象親族」の登場</h3>
+        <p>令和8年分から、<a class="term" href="#g-fuyoushinkoku">扶養控除等（異動）申告書</a>まわりの考え方に新しい区分<strong>「源泉控除対象親族」</strong>が入ります。定義はこうです<span class="year-note">令和8年分時点</span>。</p>
+        <div class="year-note-block" style="border-left:4px solid var(--accent,#c60);padding:.6em .9em;background:rgba(200,120,0,.06);border-radius:6px;">
+          <strong>源泉控除対象親族</strong>＝ 次のいずれかに該当する人。<br>
+          ① <strong>控除対象扶養親族</strong>（16歳以上で、扶養控除の対象となる親族）<br>
+          ② <strong>特定親族</strong>（19歳以上23歳未満で、特定親族特別控除の対象）のうち、<strong>合計所得金額が100万円以下</strong>の人
+        </div>
+        <p>なぜこの区分が必要なのか。理由は<strong>月次の源泉徴収</strong>にあります。月々の天引きでは「<a class="term" href="#g-fuyousuu">扶養親族等の数</a>」をカウントして税額表を引きます（第2章・第13章）。従来この数に入るのは控除対象扶養親族などでしたが、令和7年に特定親族特別控除ができたことで、<strong>「大学生年代で、月次のカウントに入れてよい親族」の線引き</strong>を明確にする必要が出ました。それが「合計所得100万円以下の特定親族も源泉控除対象親族としてカウントに含める」という整理です。源泉控除対象親族とは、要するに<strong>「月次の扶養親族等の数に入れてよい親族」を1語でまとめた概念</strong>だと捉えると腑に落ちます。</p>
+        <p>様式面では、令和8年分の扶養控除等申告書に記載する事項そのものに大きな変更はない、と国税庁は説明しています（Q&A Q2-1）。ただし所得要件が62万円へ上がったため（③）、<strong>新たに扶養親族等の対象になった家族</strong>がいれば、その旨を記載した申告書を出し直す必要があります。異動事由欄には「令和8年12月1日 改正」などと書きます。あわせて、地方税法上の「給与所得者の扶養親族等申告書」と統合された1枚の様式になっている点も、実務では押さえどころです。</p>
+        <p>また統合様式である「基礎控除申告書 兼 配偶者控除等申告書 兼 特定親族特別控除申告書 兼 所得金額調整控除申告書」（実務略称マル基配所）については、令和8年分では<strong>改正後の金額を正しく書く</strong>ことが要点です。基礎控除申告書には合計所得に応じた改正後の基礎控除額を（Q2-2）、配偶者控除等・特定親族特別控除申告書には改正後の給与所得控除（最低保障74万円）で計算し直した合計所得にもとづく控除額を記載します（Q2-3・Q2-4）。</p>
+
+        <aside class="engineer-note"><span class="tag">ENGINEER'S NOTE — 「源泉控除対象親族」は月次と年調で意味が違う</span>
+        源泉控除対象親族という語に振り回されないコツは、<strong>「これは月次カウント用の概念であって、年末調整の控除額を決める概念ではない」</strong>と割り切ることです。月次の税額表を引くための「扶養親族等の数」に、誰を1人として数えるか——それを定義するのが源泉控除対象親族。一方、年末調整で実際に扶養控除・特定親族特別控除をいくら引くかは、合計所得区分にもとづく別の判定です。データモデルとしては、親族エンティティに「①月次カウント対象か（source_withholding_eligible）」と「②年調でどの控除の対象か（扶養控除／特定親族特別控除／対象外）」を<strong>別々のフラグとして持つ</strong>のが正解。1つのbooleanで兼用しようとすると、合計所得100万円超123万円以下の特定親族（＝月次カウントには入らないが特定親族特別控除の対象にはなる）で必ず破綻します。第6章の田中さんの弟・翔がまさにこの帯に入りうるので、テストケースに固定しておくとよいです。</aside>
+
+        <h3>5. ひとり親控除まわりの調整</h3>
+        <p>ひとり親控除（第7章）そのものの控除額（所得税35万円）は令和8年分でも変わりませんが、周辺が所得要件の引上げに連動して調整されました。ひとり親の要件のうち<strong>「生計を一にする子」の所得要件</strong>は、他の扶養親族等と同じく引き上げられます（総所得金額等の合計額で判定）。また<strong>公的年金等の源泉徴収</strong>におけるひとり親の人的控除額が、<strong>月額30,000円→32,500円</strong>へ引き上げられました（令和9年分の年金源泉から）。給与の年末調整というより公的年金の源泉事務側の話ですが、「所得要件の引上げが、ひとり親判定の子の範囲や年金源泉の控除額まで芋づる式に動かす」という連動を知っておくと、改正の影響範囲を見誤りません。</p>
+        <p class="year-note-block year-note">RESEARCH.mdの指示にある「ひとり親控除の段階的拡充」は、控除額そのものの拡大というより、<strong>所得要件の引上げに伴ってひとり親と判定される子の範囲・関連する源泉控除額が連動して広がる</strong>という趣旨で捉えるのが、令和8年5月時点の一次情報に忠実です。控除額35万円の改定は執筆時点の一次情報では確認できていないため、本文では断定を避けています。</p>
+
+        <h3>6. 適用時期の総整理 —— この一枚に集約</h3>
+        <p>本章でいちばん覚えて帰ってほしいのは、<strong>「令和8年分と令和9年分で分かれる」</strong>という一点です。最後に集約表で締めます。</p>
+        <div class="scroll-x"><table>
+          <tr><th>論点</th><th>令和8年分（＝12月の年末調整）</th><th>令和9年分〜</th></tr>
+          <tr><td>基礎控除の引上げ</td><td><strong>適用</strong>（年末調整で反映）</td><td>適用（継続。ただし低所得帯の特例は縮小予定）</td></tr>
+          <tr><td>給与所得控除・最低保障額</td><td><strong>74万円</strong>（年末調整で反映。特例）</td><td>令和9年分まで74万円の特例、以後は本則69万へ</td></tr>
+          <tr><td>扶養親族等の所得要件</td><td><strong>62万円以下</strong></td><td>62万円以下（継続）</td></tr>
+          <tr><td>月次の源泉徴収税額表</td><td>改正前のまま（据え置き）</td><td><strong>改正後の税額表を使用</strong></td></tr>
+          <tr><td>月次天引きと年税額の関係</td><td>食い違う → <strong>年末調整で精算</strong></td><td>税額表も改正後になり食い違い縮小</td></tr>
+          <tr><td>公的年金の源泉（基礎的控除額）</td><td>改正前</td><td><strong>引上げ後を適用</strong></td></tr>
+          <tr><td>低所得帯の基礎控除上乗せ特例</td><td>令和7・8年分限定で継続</td><td>段階的に本則へ調整（逓減）予定</td></tr>
+        </table></div>
+        <p>もう一段先を見ておくと、令和8・9年分限定の特例（給与所得控除の74万円上乗せ、基礎控除の低所得帯上乗せ）は、<strong>令和10年分以後に本則へ戻る／調整される</strong>方向です。ここは物価動向次第で見直されうる部分で、次章（第23章）で扱う「物価連動の仕組み」とも関わります。<strong>特例は特例、いつか本則へ収束する</strong>——この前提で年度パラメータを設計しておけば、数年後の逓減改正にも慌てずに対応できます。</p>
+
+        <details class="check"><summary>Q1. 令和8年分で、月々の源泉徴収（天引き）と年末調整の関係はどうなりますか。なぜそうなるのですか。</summary><p>令和8年11月までの月次の天引きは改正前のまま変わりません。月次の源泉徴収税額表の改正が令和9年1月からだからです（④は令和9年分適用）。一方、基礎控除・給与所得控除の引上げ（①②）は令和8年分にさかのぼって効くため、その引上げ分は令和8年12月の年末調整でまとめて精算されます。結果として例年より還付が出やすい年になり得ます。行政が月次表の期中差し替えを避け、現場負担の少ない移行を選んだためです。</p></details>
+        <details class="check"><summary>Q2. 「源泉控除対象親族」とは何で、なぜ新設されたのですか。</summary><p>控除対象扶養親族、または特定親族のうち合計所得金額100万円以下の人を指します。要するに「月次の源泉徴収で扶養親族等の数にカウントしてよい親族」を1語でまとめた概念です。令和7年に特定親族特別控除ができ、大学生年代で月次カウントに含めてよい親族の線引きを明確にする必要が生じたため、令和8年分から導入されました。年末調整の控除額を決める概念ではなく、月次カウント用である点が要注意です。</p></details>
+        <details class="check"><summary>Q3. 令和8年11月30日までに最後の給与を支払った退職者は、改正後の基礎控除等を年末調整で受けられますか。</summary><p>受けられません。改正は令和8年12月1日施行で、年末調整は最終給与の支払時に行うため、最終給与を11月30日以前に支払った人（中途退職・死亡・非居住者化など）の年末調整には改正後の控除が適用されません。この人が引上げ後の控除を受けるには、本人が確定申告する必要があります。実装では「最終給与の支払日が12月1日以後か」で適用テーブルを分岐させます。</p></details>
+      </section>
+
+      <section class="chapter" id="ch23">
+        <h2>第23章　これからの年末調整</h2>
+        <div class="chap-map"><strong>この章の位置づけ：</strong>第20章で過去を、第21・22章で現在の改正をたどってきました。第5部の締めくくりとなるこの章は、視線を<strong>これから</strong>へ向けます。物価連動という新しい仕組み、電子化の行き着く先、そして「そもそも年末調整は必要か」という不要論。いずれも確定した未来ではなく<strong>論点</strong>ですが、第20章で見た「精算主体は誰か」という日本型の特殊性が、これからどう組み替わりうるかを考える材料になります。エンジニアとして、自分たちのプロダクトがどの方向へ押されるかを見通すための章です。</div>
+
+        <p class="year-note-block year-note">この章は制度の「方向性」を扱います。物価連動の一部は令和7・8年改正で現実に導入されましたが、将来の見直し・デジタル化・不要論の帰趨は<strong>未確定の論点</strong>です。確定情報として読まないでください。断定を避け、議論の構造を示すにとどめます。</p>
+
+        <h3>1. 物価連動の仕組み —— 課税最低限が「自動で動く」時代へ</h3>
+        <p>令和7・8年の改正でもっとも構造的に新しいのは、金額の引上げそのものより<strong>「物価に連動して課税最低限を動かす」という発想が制度に持ち込まれた</strong>ことです（第22章の基礎控除+4万円の物価スライド）。従来、基礎控除などの金額は長く据え置かれ、政治的な決断があって初めて改定されてきました。その結果、物価や賃金が上がっても控除額が据え置かれ、実質的な増税（＝課税最低限の目減り）が静かに進む、という問題が積み重なっていました。「103万円の壁」が何十年も動かなかったのは、その典型です。</p>
+        <p>物価連動は、この目減りを<strong>自動的に補正する</strong>という考え方です。諸外国では、控除額や税率区分を物価指数に合わせて毎年スライドさせる「インフレ調整（インデクセーション）」を制度化している国もあります。日本がその方向へ本格的に舵を切るかはまだ論点ですが、令和7・8年改正はその入口に立ったと言えます。</p>
+
+        <aside class="engineer-note"><span class="tag">ENGINEER'S NOTE — 物価連動は「パラメータが毎年動く」を常態化する</span>
+        物価連動が制度化されると、私たちのプロダクトにとっては<strong>「控除額は毎年必ず変わる前提」</strong>が確定します。これは設計方針を大きく後押しします。第26章で扱う「年度パラメータ化」は、これまで<strong>改正がある年だけの備え</strong>でしたが、物価連動時代には<strong>毎年更新される外部データを取り込む常設のパイプライン</strong>へと格上げされます。金額をコードに埋め込む選択肢は完全に消え、「年度×合計所得区分×本則/特例」のテーブルを<strong>データとして差し替える</strong>設計が唯一の正解になります。連動の基準（どの物価指数を、いつの時点で参照するか）まで仕様化される可能性があり、その場合は基準指標そのものもパラメータとして持つことになります。改正対応が「イベント」から「定常運用」へ変わる——これが物価連動の実装的な含意です。</aside>
+
+        <h3>2. デジタル化の方向性 —— 紙からデータへ、そして名寄せへ</h3>
+        <p>第19章で見たとおり、年末調整はマイナンバー・年調ソフト・電子的控除証明書・e-Tax／eLTAXによって、紙からデータへ移りつつあります。この流れの先に何があるか。方向性は大きく2段階で考えられます。</p>
+        <ul>
+          <li><strong>第1段階：社内手続きの電子化（現在進行中）</strong>。従業員が申告書をオンラインで入力し、保険会社等の控除証明書をXMLデータで自動取り込みし、会社が電子データで提出する。手入力と転記のミスを減らし、証明書の突合を自動化する段階です。</li>
+          <li><strong>第2段階：行政側でのデータ連携・名寄せ</strong>。マイナンバーを軸に、給与・保険料・年金などのデータが行政側で名寄せされ、控除の多くが<strong>あらかじめ埋まった状態</strong>で提示される——いわゆる「記入済み申告（プレフィルド）」の世界です。第20章で見たイギリス型（当局が精算主体）に近づく方向とも言えます。</li>
+          </ul>
+        <p>第2段階が進むと、年末調整というイベントの重心が<strong>「会社が計算する」から「行政が持つデータを本人が確認する」</strong>へ移っていく可能性があります。ここが次の不要論と直結します。</p>
+
+        <h3>3. 年末調整不要論 —— 論点を整理する</h3>
+        <p>近年、「年末調整を廃止して各人の確定申告に一本化すべきだ」という議論が繰り返し提起されます。感情論になりがちなテーマなので、<strong>賛否の論点を構造として</strong>並べておきます。特定の立場を推奨するものではありません。</p>
+        <div class="scroll-x"><table>
+          <tr><th>観点</th><th>不要論（廃止・申告一本化）の主張</th><th>存続論の主張</th></tr>
+          <tr><td>納税者の当事者意識</td><td>自分で申告することで税・控除への関心が高まり、負担が「見える」ようになる</td><td>多数の給与所得者に申告義務を課すと負担・混乱が大きい</td></tr>
+          <tr><td>企業の負担</td><td>会社が担う徴税・精算のコスト（＝第20章の責任移譲）を本来の当局へ戻せる</td><td>すでに定着した仕組みで、全体の徴税コストは低く抑えられている</td></tr>
+          <tr><td>行政コスト</td><td>デジタル化・名寄せが進めば当局処理は現実的になる</td><td>全国民分の申告処理は当局にとって過大</td></tr>
+          <tr><td>正確性・公平性</td><td>各人が自分の事情を申告する方が実態に合う</td><td>会社経由の方が捕捉漏れ・誤りが少ない</td></tr>
+        </table></div>
+        <p>この対立の根っこは、第20章で見た<strong>「精算主体を民間企業に置く」という日本型の特殊性</strong>そのものです。不要論とは要するに「精算主体を企業から個人（＋当局）へ戻せ」という主張であり、存続論は「その移譲コストは払う価値がある」という主張です。デジタル化（前節）がどこまで進むかが、この論争の現実味を左右します。名寄せとプレフィルドが十分に成熟すれば、不要論は「理念」から「実現可能な選択肢」へ変わりうるからです。</p>
+
+        <aside class="engineer-note"><span class="tag">ENGINEER'S NOTE — どの未来でも「計算ロジックの正しさ」は残る</span>
+        エンジニアとして冷静に見ておきたいのは、<strong>年末調整の形がどう変わっても、「収入→所得→課税所得→税額」という計算そのものは消えない</strong>という点です（第1章の背骨）。不要論が実現して申告一本化になっても、その申告を支援するソフトが同じ計算をします。プレフィルド化が進んでも、埋め込む金額の正しさは誰かが計算する必要があります。つまり私たちのプロダクトの<strong>価値の核（正確な計算エンジン）は制度変更に対して頑健</strong>で、変わるのは<strong>入出力の相手と経路</strong>（会社→従業員か、当局→個人か）です。第19章のNOTEで述べた「1つの内部モデル × 複数の外部フォーマット」というハブ＆スポーク設計は、まさにこの不確実な未来へのヘッジになります。計算の核を守り、周辺のアダプタを差し替え可能にしておく——これがどの未来にも効く構えです。</aside>
+
+        <h3>第5部のまとめ —— 歴史を知ると改正が読める</h3>
+        <p>第5部を振り返ります。第20章で、年末調整は戦時の源泉徴収と戦後の効率追求から生まれた「精算主体が民間企業」という日本型の制度だと知りました。第21章で、近年の改正が「配偶者の壁→働き方の中立→物価対応」とテーマを移してきた線を追い、第22章で、その線が令和8年分でどう具体化し、なぜ月次と年調で適用時期が分かれるのかを実装目線で押さえました。そして本章で、物価連動・デジタル化・不要論という未来の論点が、いずれも第20章の「精算主体は誰か」という一点に帰着することを見ました。<strong>制度は毎年変わりますが、変わり方には構造があります。</strong>その構造をつかんでおけば、来年どんな改正が来ても、この地図のどこが動いたのかとして落ち着いて読めるはずです。次の第6部では、この理解をエンジニアの実装知へ翻訳していきます。</p>
+
+        <details class="check"><summary>Q1. 「物価連動の仕組み」が制度に入ることは、これまでの改正と何が構造的に違いますか。</summary><p>従来、基礎控除などの金額は政治的決断があって初めて改定され、間は据え置かれて実質的な増税（課税最低限の目減り）が進みました。物価連動は、物価に合わせて課税最低限を自動的に補正するという発想で、令和7・8年改正の基礎控除+4万円の物価スライドがその入口です。実装面では「控除額は毎年必ず変わる前提」が確定し、年度パラメータ化が定常運用へ格上げされます。</p></details>
+        <details class="check"><summary>Q2. 年末調整不要論の対立の根っこは、突き詰めると何をめぐる議論ですか。</summary><p>第20章で見た「精算主体を民間企業に置く」という日本型の特殊性そのものをめぐる議論です。不要論は精算主体を企業から個人（＋当局）へ戻せという主張、存続論はその移譲コストを払う価値があるという主張です。行政側のデジタル化・名寄せ（プレフィルド）がどこまで成熟するかが、不要論の現実味を左右します。</p></details>
+        <details class="check"><summary>Q3. 制度がどう変わっても、年末調整プロダクトの何が変わらずに残ると考えられますか。</summary><p>「収入→所得→課税所得→税額」という計算そのものと、その正確さを担保する計算エンジンの価値です（第1章の背骨）。申告一本化やプレフィルド化が進んでも、同じ計算は誰かのソフトが行います。変わるのは入出力の相手と経路（会社→従業員か、当局→個人か）であり、計算の核を守りつつ周辺アダプタを差し替え可能にしておく設計が、どの未来にも効きます。</p></details>
+      </section>
+
+      <!-- ============ 第6部 ============ -->
+      <section class="part-cover" id="part6"><h2>第6部　エンジニアのための年末調整</h2></section>
+
+      <section class="chapter" id="ch24">
+        <h2>第24章　計算ロジックの構造</h2>
+        <div class="chap-map"><strong>この章の位置づけ：</strong>第6部の入口です。第1〜23章で身につけた制度の理解を、いよいよ実装者の言葉に翻訳していきます。この章では年末調整の計算を、<strong>入力 → 判定 → 計算 → 出力</strong>という4ステージのパイプラインとして捉え直します。第1章で描いた「収入 → 所得 → 課税所得 → 税額」の背骨が、そのままソフトウェアのデータフローに写ることを見ていきます。個々の控除の暗記から一歩引いて、<strong>全体を貫くデータの流れ</strong>を頭に入れるのが狙いです。</div>
+
+        <h3>年末調整は4ステージのパイプライン</h3>
+        <p>年末調整の処理を「一つの巨大な計算式」として書こうとすると破綻します。控除の適用可否、金額表の参照、端数処理、帳票への転記——性質の違う仕事が混ざっているからです。これらは次の4つのステージに分けられます。</p>
+        <div class="flow-diagram"><div class="flow-v" style="max-width:40rem">
+          <div class="flow-stage">① 入力（Input）<span class="sub">申告書・前職源泉徴収票・控除証明書のデータ化。生の申告値</span></div>
+          <div class="flow-op"><span class="minus">正規化・型付け</span></div>
+          <div class="flow-stage">② 判定（Eligibility）<span class="sub">各控除の適用可否と区分の決定。12/31時点の現況で真偽を確定</span></div>
+          <div class="flow-op"><span class="times">区分 → 金額テーブル参照</span></div>
+          <div class="flow-stage">③ 計算（Calculation）<span class="sub">給与所得・控除額・課税所得・税額を数式と速算表で算出</span></div>
+          <div class="flow-op"><span class="minus">丸め・整形</span></div>
+          <div class="flow-stage result">④ 出力（Output）<span class="sub">源泉徴収簿・源泉徴収票・給与支払報告書・法定調書への転記</span></div>
+        </div>
+        <p class="flow-caption">申告書データが4つのステージを一方向に流れて帳票になる</p></div>
+        <p>重要なのは、この4ステージが<strong>一方向（左から右）に流れる</strong>ことです。判定は入力に依存し、計算は判定に依存し、出力は計算に依存します。逆流はありません。この単純な依存の向きが、テストのしやすさ・改正への強さ・バグの追いやすさを決めます。以下、ステージごとに何が起きるかを見ます。</p>
+
+        <h3>① 入力 —— 生の申告値を「型のあるデータ」にする</h3>
+        <p>入力ステージの仕事は、紙またはフォームで集まった申告値を、後段が扱える構造化データに変換することです。第12章で読み解いた各種申告書——扶養控除等（異動）申告書（マル扶）、基礎控除申告書兼配偶者控除等申告書兼特定親族特別控除申告書兼所得金額調整控除申告書（マル基配所）、保険料控除申告書（マル保）、住宅ローン控除申告書——が、それぞれ入力の束に対応します。</p>
+        <p>ここで集めるのは、あくまで<strong>「本人が申告した生の値」と「事実」</strong>だけです。控除額をこの段で計算してはいけません。たとえば配偶者の「収入」は集めますが、そこから「配偶者控除38万円」を導くのは③計算の仕事です。田中由紀さんのケースなら、現勤務先の給与380万円・前職90万円・弟翔のアルバイト給与150万円といった<strong>収入額</strong>と、弟の年齢20歳・生計を一にする事実を集めるところまでが入力です。</p>
+        <pre><code><span class="cmt">// 入力ステージが生成する構造（型定義のイメージ）</span>
+type EmployeeFiling = {
+  employeeId: string
+  taxYear: 2025 | 2026        <span class="cmt">// 年分は必ず持たせる（第26章）</span>
+  salaryIncome: Yen           <span class="cmt">// 給与「収入」。所得ではない（第25章）</span>
+  priorJobIncome: Yen         <span class="cmt">// 前職分（田中さんの90万円・第14章）</span>
+  dependents: DependentClaim[]<span class="cmt">// 各人の生年月日・所得・同居別居・障害等</span>
+  spouse: SpouseClaim | null
+  insurancePremiums: InsuranceClaim[]
+  housingLoan: HousingLoanClaim | null
+}</code></pre>
+        <p>この段で「値の正規化」——全角数字を半角に、空欄を0でなく<code>null</code>に、生年月日を日付型に——を済ませておくと、後段が例外だらけにならずに済みます。第19章で触れたマイナンバーや電子的控除証明書は、この入力段で本人確認済みのデータとして合流します。</p>
+
+        <h3>② 判定 —— 「適用できるか」と「どの区分か」を真偽で確定する</h3>
+        <p>判定ステージは、集めた事実から<strong>各控除の適用可否と区分</strong>を決めます。ここが年末調整ロジックの「頭脳」で、制度の要件がそのまま条件分岐になります。金額はまだ出しません。出すのは<strong>「この人にこの控除が使えるか」「使えるとしてどの区分か」という札</strong>です。</p>
+        <p>たとえば扶養まわり（第6章）の判定は、おおよそ次の形になります。判定の入力は「生計を一にするか」「合計所得金額がいくらか」「12月31日時点で何歳か」といった事実です。</p>
+        <pre><code><span class="cmt">// 扶養親族の区分判定（令和7年分・イメージ）</span>
+function classifyDependent(d: Dependent, year: TaxYear): DependentKind {
+  if (!d.sharesLivelihood) return 'none'          <span class="cmt">// 生計を一にしない</span>
+  const income = totalIncome(d)                    <span class="cmt">// 合計所得金額（収入ではない）</span>
+  const threshold = dependentIncomeLimit(year)     <span class="cmt">// R7:58万 / R8:62万（第26章）</span>
+  if (income &gt; threshold) return 'specialRelative?' <span class="cmt">// 特定親族特別控除の検討へ</span>
+  const age = ageOnDec31(d.birthDate, year)        <span class="cmt">// 判定基準日は12/31（第25章）</span>
+  if (age &gt;= 70) return d.livesWithParent ? 'elderlyCohabit' : 'elderly'
+  if (age &gt;= 19 &amp;&amp; age &lt; 23) return 'specific'   <span class="cmt">// 特定扶養親族</span>
+  if (age &gt;= 16) return 'general'
+  return 'under16'                                  <span class="cmt">// 扶養控除の対象外</span>
+}</code></pre>
+        <p>鈴木三郎さんの長男・大輔（21歳）は<code>'specific'</code>（特定扶養親族）、同居の母ハル（82歳）は<code>'elderlyCohabit'</code>（同居老親等）という札がここで付きます。田中さんの弟・翔（20歳・所得58万円超）は扶養控除の枠から外れ、<code>'specialRelative?'</code>——特定親族特別控除（第6章・令和7年創設）の検討対象という札に回ります。<strong>札を付けるところまでが判定</strong>で、控除額そのものは次段です。</p>
+        <aside class="engineer-note"><span class="tag">ENGINEER'S NOTE — 判定と計算を混ぜない</span>
+        実装で最も事故が多いのが、判定（可否・区分）と計算（金額）を1つの関数に押し込むことです。<code>calcDependentDeduction()</code> の中で年齢も所得も同居判定も金額表の参照も全部やる、という書き方は、改正が来たとき「どこを直せばいいか」が分からなくなります。<strong>「区分を返す関数」と「区分から金額を引く関数」を分ける</strong>——判定は制度要件（真偽）、計算は金額表（数値）というレイヤ分けにしておくと、令和8年の所得要件引き上げ（58万→62万）は判定側の定数1つ、控除額の改正は計算側のテーブル1つ、と修正箇所が一点に閉じます（第26章）。</aside>
+
+        <h3>③ 計算 —— 区分と数式で金額を積み上げる</h3>
+        <p>計算ステージで、ようやく金額が出ます。ここは第1章の背骨——<strong>収入 → 所得 → 課税所得 → 税額</strong>——を数式でなぞる部分です。第5章の給与所得（収入から給与所得控除を引く）、第6〜8章の各所得控除、第10章の税額計算（速算表・復興特別所得税・端数処理）が、すべてこのステージに収まります。</p>
+        <div class="scroll-x"><table>
+          <tr><th>計算の段</th><th>入力</th><th>出力</th><th>参照する章</th></tr>
+          <tr><td>給与所得</td><td>給与収入（＋前職分）</td><td>給与所得金額</td><td>第5・14章</td></tr>
+          <tr><td>所得控除の合計</td><td>②の区分札＋保険料等</td><td>所得控除額の合計</td><td>第6〜8章</td></tr>
+          <tr><td>課税給与所得金額</td><td>給与所得 − 所得控除</td><td>1,000円未満切捨後の額</td><td>第10章</td></tr>
+          <tr><td>算出所得税額</td><td>課税所得 × 速算表</td><td>算出所得税額</td><td>第10章</td></tr>
+          <tr><td>年調所得税額</td><td>算出税額 − 住宅ローン控除</td><td>0円下限の税額</td><td>第9・10章</td></tr>
+          <tr><td>年調年税額</td><td>年調所得税額 × 102.1%</td><td>100円未満切捨後の確定額</td><td>第10章</td></tr>
+        </table></div>
+        <p>この段は<strong>純粋な関数</strong>として書けるのが理想です。入力（区分札と金額）が同じなら、出力（税額）は必ず同じ。外部の状態やその時刻に依存しない。そうしておけば、佐藤さん・田中さん・鈴木さんの各ケースを固定入力→期待出力のテストとして何百通りでも回せます。②で札を付け終えているので、③は「札に応じて金額表を引き、数式に流し、決められた位置で丸める」だけの見通しの良い処理になります。</p>
+
+        <h3>④ 出力 —— 計算結果を制度の帳票に転記する</h3>
+        <p>最後の出力ステージは、③で確定した数値を各帳票の所定欄へ流し込みます。第13章の<strong>源泉徴収簿</strong>（計算の作業台）と<strong>源泉徴収票</strong>（結果の証明書）、第16章の<strong>給与支払報告書</strong>（市区町村へ／住民税連携）、第17章の<strong>法定調書</strong>（税務署へ）——同じ計算結果が、宛先の違う複数の帳票に分岐して出ていきます。</p>
+        <p>ここで大切なのは、<strong>出力段では計算をやり直さない</strong>ことです。源泉徴収票の支払金額欄と給与支払報告書の同欄が1円でも食い違えば、行政側で突合エラーになります。両者は必ず③の<strong>同一の確定値</strong>を参照する——「計算は一度、転記は何度でも」が鉄則です。過不足の精算（還付・追徴、第15章）も、③で確定した年調年税額と源泉徴収済額の差として、この段で各人に反映されます。</p>
+        <aside class="engineer-note"><span class="tag">ENGINEER'S NOTE — パイプラインは一方向・各段の成果物を残す</span>
+        4ステージを実装に落とすときのコツは、<strong>各段の成果物（中間データ）を捨てずに保持する</strong>ことです。②の区分札、③の各段の金額を「途中経過」として残しておくと、源泉徴収簿がほぼそのまま再現でき、監査・問い合わせ対応・再計算（第26章）で決定的に効きます。「なぜこの人の控除額がこの額なのか」を、②の札まで遡って説明できる状態にしておく。逆に、入力から最終税額まで一気に計算して中間を捨てる実装は、速いが説明不能になり、年末調整プロダクトとしては致命的です。パイプラインの各段は、次段への入力であると同時に<strong>監査ログ</strong>でもある、と考えてください。</aside>
+
+        <div class="check-wrap"><h3>理解度チェック</h3>
+          <details class="check"><summary>Q1. 年末調整の計算を4ステージに分けると何になりますか。依存の向きも述べてください。</summary><p><strong>入力 → 判定 → 計算 → 出力</strong>の4つで、依存は左から右への一方向です。判定は入力に、計算は判定に、出力は計算に依存し、逆流はありません。</p></details>
+          <details class="check"><summary>Q2. 「判定」ステージと「計算」ステージは、それぞれ何を出力しますか。</summary><p>判定は<strong>控除の適用可否と区分（真偽・札）</strong>を出力し、金額は出しません。計算は、その区分札に応じて金額表・数式・丸めを適用し<strong>控除額や税額（数値）</strong>を出力します。金額を出すのは計算段だけです。</p></details>
+          <details class="check"><summary>Q3. 源泉徴収票と給与支払報告書の金額が食い違わないようにするには、出力ステージをどう設計すべきですか。</summary><p>出力段では計算をやり直さず、複数の帳票がすべて<strong>計算ステージで確定した同一の値</strong>を参照するようにします。「計算は一度、転記は何度でも」。宛先ごとに再計算すると突合エラーの原因になります。</p></details>
+        </div>
+      </section>
+
+      <section class="chapter" id="ch25">
+        <h2>第25章　実装上の落とし穴</h2>
+        <div class="chap-map"><strong>この章の位置づけ：</strong>第24章でパイプラインの骨格を得ました。この章はその各段で実際に踏み抜きやすい<strong>落とし穴</strong>を集めた実務集です。本書のこれまでの章——端数処理（第10章）、収入と所得の違い（第1・5章）、判定基準日としての12月31日現況（第6章）——で触れた論点を、実装のバグとして統合します。どれも「制度を知っていれば当たり前」なのに、コードにすると静かに間違える種類のものです。</div>
+
+        <h3>落とし穴1 —— 端数処理は「位置・方向・順序」が仕様</h3>
+        <p>年末調整の丸めは、四捨五入が普通、という素朴な感覚が通用しません。第10章で見たとおり、<strong>丸める位置・方向（切り捨てか）・タイミング</strong>がすべて制度で決まっています。代表的な丸めを並べます<span class="year-note">令和7年分</span>。</p>
+        <div class="scroll-x"><table>
+          <tr><th>対象</th><th>丸め</th><th>やりがちな誤り</th></tr>
+          <tr><td>課税給与所得金額</td><td>1,000円未満切り捨て</td><td>四捨五入してしまう</td></tr>
+          <tr><td>年調年税額</td><td>100円未満切り捨て</td><td>算出所得税額の段で丸めてしまう</td></tr>
+          <tr><td>復興特別所得税</td><td>年調所得税額 × 102.1% を一括</td><td>2.1%を別計算して足す／先に丸める</td></tr>
+        </table></div>
+        <p>とりわけ<strong>順序</strong>が命取りです。「所得控除を引く → 1,000円未満切り捨て → 速算表 → 住宅ローン控除を引く → ×102.1% → 100円未満切り捨て」。この列のどこか1か所で丸めを前後させると、最終額が数百円ずれ、全従業員に波及します。</p>
+        <pre><code><span class="cmt">// NG: 浮動小数点と早すぎる丸め</span>
+const fukko = Math.round(nencho * 0.021)   <span class="cmt">// 2.1%を別計算 → 誤差</span>
+const tax = Math.round((nencho + fukko) / 100) * 100
+
+<span class="cmt">// OK: 整数演算で一括 → 最後に100円未満切り捨て</span>
+const gross = Math.floor(nencho * 1021 / 1000)  <span class="cmt">// 102.1%を一体で</span>
+const tax   = Math.floor(gross / 100) * 100      <span class="cmt">// 切り捨て（round ではない）</span></code></pre>
+        <p>お金の計算に浮動小数点の <code>× 1.021</code> を使うと、<code>548500 * 1.021</code> が <code>560018.4999…</code> になって切り捨て結果が変わる、といった事故が起きます。<strong>整数（円）で持ち、<code>Math.round</code> ではなく <code>Math.floor</code>／切り捨てを明示</strong>するのが安全です。</p>
+
+        <h3>落とし穴2 —— 税額表・速算表を「コードに埋め込む」</h3>
+        <p>算出所得税額は、累進課税を自前のループで再現するのではなく、<strong>速算表</strong>（税率と控除額の対応表）を引くのが制度上の正解です（第10章）。月次源泉は<strong>税額表</strong>（月額表・日額表、第2章の甲欄/乙欄）を引きます。これらを <code>if</code> のはしごでハードコードすると、改正のたびに全条件を書き換えることになり、しかも境界値を1本間違えると誰も気づけません。</p>
+        <pre><code><span class="cmt">// 速算表はデータとして持つ（令和7年分・所得税の例）</span>
+const SOKUSAN_2025: Bracket[] = [
+  { upTo: 1_950_000,  rate: 0.05, deduct: 0 },
+  { upTo: 3_300_000,  rate: 0.10, deduct: 97_500 },
+  { upTo: 6_950_000,  rate: 0.20, deduct: 427_500 },
+  { upTo: 9_000_000,  rate: 0.23, deduct: 636_000 },
+  { upTo: 18_000_000, rate: 0.33, deduct: 1_536_000 },
+  { upTo: 40_000_000, rate: 0.40, deduct: 2_796_000 },
+  { upTo: Infinity,   rate: 0.45, deduct: 4_796_000 },
+]
+function calcTax(taxable: Yen, table: Bracket[]): Yen {
+  const b = table.find(x =&gt; taxable &lt;= x.upTo)!
+  return Math.floor(taxable * b.rate - b.deduct)  <span class="cmt">// 円未満は切り捨て</span>
+}</code></pre>
+        <p>表をデータにしておけば、改正は表の差し替えだけ。<code>calcTax</code> のロジックは何年でも不変です。税額表（月額表）も同様に、区分と扶養親族等の数を鍵にした参照テーブルとして持ちます。<strong>「表は表として持ち、コードは表を引くだけ」</strong>が鉄則です（年度パラメータ化は第26章）。</p>
+
+        <h3>落とし穴3 —— 「所得」と「収入」の変数名問題</h3>
+        <p>本書が第1章から繰り返してきた区別——<strong>収入（もらった額）</strong>と<strong>所得（収入から必要経費・給与所得控除を引いた額）</strong>——は、実装では変数名の問題として牙を剥きます。「103万円の壁」「123万円」は<strong>給与収入</strong>の話、扶養の判定要件「合計所得58万円以下」は<strong>所得</strong>の話。両者を <code>income</code> という一語で受けると、片方の意味で入った値をもう片方の関数に渡す、という気づきにくいバグが必ず生まれます。</p>
+        <pre><code><span class="cmt">// NG: どちらも income で、意味が混ざる</span>
+function isDependent(income: number) { return income &lt;= 580_000 }
+isDependent(1_230_000)  <span class="cmt">// 収入123万を所得と誤って渡す → 誤判定</span>
+
+<span class="cmt">// OK: 型・名前で「収入」と「所得」を分ける</span>
+type Revenue = number &amp; { readonly _r: unique symbol }  <span class="cmt">// 収入</span>
+type Income  = number &amp; { readonly _i: unique symbol }  <span class="cmt">// 所得</span>
+function salaryIncomeToIncome(rev: Revenue, year: TaxYear): Income { /* 給与所得控除 */ }
+function isDependent(income: Income, year: TaxYear): boolean { /* 合計所得で判定 */ }</code></pre>
+        <p>田中さんの弟・翔は<strong>アルバイト給与150万円（収入）</strong>で、給与所得控除65万円を引いた<strong>合計所得85万円</strong>。扶養要件（所得58万円以下）は超えるが特定親族特別控除の対象、という判断は「収入で判定していないか／所得に変換したか」を型で強制できれば事故りません。命名規約として <code>salaryRevenue</code> / <code>totalIncome</code> のように<strong>必ず「収入」か「所得」かを名前に含める</strong>だけでも効果は大きいです。</p>
+        <aside class="engineer-note"><span class="tag">ENGINEER'S NOTE — 壁の金額はドメインの単位変換点</span>
+        「103万」「123万」「160万」「178万」といった“壁”の数字は、いずれも<strong>給与収入</strong>ベースの表現で、内部判定に使う<strong>合計所得</strong>とは給与所得控除ぶんズレます。UI（本人が入力するのは収入）と内部ロジック（所得で判定）の<strong>境界に一箇所だけ変換関数</strong>を置き、それ以外の場所では所得しか流れないようにするのが定石です。壁の金額を判定式に直書きすると、給与所得控除の改正（令和7年の最低保障55万→65万）で壁が動いたときに追随できません。壁は「収入←→所得の変換の結果として出てくる値」であって、判定の一次定数ではない、と捉えてください。</aside>
+
+        <h3>落とし穴4 —— 判定基準日は「12月31日時点の現況」</h3>
+        <p>年齢・扶養・配偶者の判定は、申告書提出日でも計算実行日でもなく、原則<strong>その年の12月31日時点の現況</strong>で行います（第6章）。年の途中で誕生日を迎えても16歳になったかは<strong>12/31時点</strong>、婚姻・離婚・死亡・出生も<strong>12/31時点の状態</strong>で数える。実装では「今日」で年齢を計算してしまう <code>new Date()</code> が典型的な地雷です。</p>
+        <pre><code><span class="cmt">// NG: 実行時点で年齢を計算 → 走らせる日によって結果が変わる</span>
+const age = (Date.now() - birth) / YEAR
+
+<span class="cmt">// OK: 判定基準日を明示的に渡す</span>
+function ageOnDec31(birth: Date, year: TaxYear): number {
+  const base = new Date(year, 11, 31)   <span class="cmt">// 12/31（月は0始まり）</span>
+  let a = base.getFullYear() - birth.getFullYear()
+  const md = (base.getMonth() - birth.getMonth())
+          || (base.getDate() - birth.getDate())
+  if (md &lt; 0) a--
+  return a
+}</code></pre>
+        <p>特定扶養（19歳以上23歳未満）・老人扶養（70歳以上）・16歳未満の区分は、この <code>ageOnDec31</code> ひとつを全判定で使い回すこと。死亡した扶養親族は「死亡時の現況」で判定する等の例外もあるため、<strong>基準日は定数ではなく引数</strong>にしておくと、こうした特例を局所的に差し込めます。「計算をいつ実行しても結果が同じ（べき等）」であることが、再計算（第26章）や監査の前提です。</p>
+
+        <h3>落とし穴5 —— そのほかの定番</h3>
+        <ul>
+          <li><strong>0円下限を忘れる：</strong>年調所得税額は住宅ローン控除で税額が消えても<strong>0円が下限</strong>。マイナス（給付）にしない（第10章、佐藤さんのケース）。</li>
+          <li><strong>前職分の合算漏れ：</strong>中途入社は前職の源泉徴収票を<strong>合算</strong>して年末調整する（第14章、田中さん）。乙欄期間や年末調整対象外パターンの取り違えに注意。</li>
+          <li><strong>控除の排他関係：</strong>配偶者控除と配偶者特別控除は同時適用しない、扶養控除と特定親族特別控除の対象は重複しない、など<strong>排他ルール</strong>を判定段で担保する。</li>
+          <li><strong>合計所得の合成：</strong>「合計所得金額」は給与だけでない場合がある。給与所得＝収入と決め打ちしない。</li>
+        </ul>
+
+        <div class="check-wrap"><h3>理解度チェック</h3>
+          <details class="check"><summary>Q1. 年調年税額の計算で <code>× 1.021</code> の浮動小数点演算を避けるべきなのはなぜですか。</summary><p>浮動小数点だと <code>548500 * 1.021</code> が <code>560018.499…</code> のようになり、切り捨て結果が本来と変わる誤差が出るためです。整数（円）で <code>× 1021 ÷ 1000</code> のように計算し、<code>Math.floor</code> で100円未満を切り捨てます。四捨五入ではなく切り捨てである点も要注意です。</p></details>
+          <details class="check"><summary>Q2. 「103万円」「123万円」といった壁の金額を、扶養判定の条件式に直接書くべきでない理由は。</summary><p>壁は<strong>給与収入</strong>ベースの表現で、内部判定に使う<strong>合計所得</strong>とは給与所得控除ぶんズレます。給与所得控除が改正されれば壁の金額も動くため、壁は「収入←→所得の変換の結果」として扱い、判定は所得で行うべきです。UIと内部ロジックの境界に一箇所だけ変換関数を置きます。</p></details>
+          <details class="check"><summary>Q3. 扶養親族の年齢を <code>new Date()</code>（実行時点）で計算するとなぜ危険ですか。</summary><p>年末調整の年齢・扶養・婚姻等は<strong>その年の12月31日時点の現況</strong>で判定するのが原則だからです。実行時点で計算すると走らせる日によって区分が変わり、べき等でなくなります。判定基準日（12/31）を引数で明示的に渡す関数を全判定で使い回すべきです。</p></details>
+        </div>
+      </section>
+
+      <section class="chapter" id="ch26">
+        <h2>第26章　毎年変わる制度への設計</h2>
+        <div class="chap-map"><strong>この章の位置づけ：</strong>年末調整プロダクトの本質的な難しさは「計算が複雑なこと」ではなく「<strong>毎年制度が変わること</strong>」です。この章は第5部で追った改正の流れ——令和2年の給与所得控除・基礎控除の振替、令和7年改正、令和8年改正——を、<strong>年度パラメータ化</strong>という設計課題の実例として読み直します。改正差分をどう吸収するか、そして過年度をどう再計算可能に保つか（第15章の再年末調整と接続）を扱う、第6部の設計論の中心です。</div>
+
+        <h3>すべての定数に「年分」という次元を与える</h3>
+        <p>第24章のデータ構造でさりげなく <code>taxYear</code> を持たせたのは、この章のためです。年末調整の金額・要件は、ほぼ例外なく<strong>年分（何年分の所得税か）に依存</strong>します。基礎控除額、給与所得控除の最低保障額、扶養親族等の所得要件、速算表、様式——どれも「令和7年分では」「令和8年分では」と枕詞が付く。したがって設計の第一原則は、<strong>制度定数を年度で引くテーブルにする</strong>ことです。</p>
+        <p>RESEARCH の数字で具体化します。基礎控除の一部と給与所得控除の最低保障は、直近2年でも次のように動いています<span class="year-note">令和7・8年分</span>。</p>
+        <div class="scroll-x"><table>
+          <tr><th>項目</th><th>令和6年分まで</th><th>令和7年分</th><th>令和8年分</th></tr>
+          <tr><td>基礎控除（本則・標準額）</td><td>48万円</td><td>58万円</td><td>62万円</td></tr>
+          <tr><td>給与所得控除の最低保障額</td><td>55万円</td><td>65万円</td><td>74万円（特例）</td></tr>
+          <tr><td>扶養親族等の合計所得要件</td><td>48万円以下</td><td>58万円以下</td><td>62万円以下</td></tr>
+          <tr><td>いわゆる課税最低限の壁</td><td>103万円</td><td>160万円</td><td>178万円</td></tr>
+        </table></div>
+        <pre><code><span class="cmt">// 年度パラメータを一箇所に集約する</span>
+type TaxYear = 2024 | 2025 | 2026
+type TaxParams = {
+  basicDeductionTable: BasicDeductionBracket[]  <span class="cmt">// 合計所得に応じた基礎控除</span>
+  salaryDeductionMin: Yen                        <span class="cmt">// 給与所得控除の最低保障額</span>
+  dependentIncomeLimit: Yen                       <span class="cmt">// 扶養の合計所得要件</span>
+  incomeTaxBrackets: Bracket[]                     <span class="cmt">// 速算表</span>
+  reconstructionRate: number                      <span class="cmt">// 復興特別所得税 1.021</span>
+  hasSpecialRelativeDeduction: boolean            <span class="cmt">// 特定親族特別控除（R7創設）</span>
+}
+const PARAMS: Record&lt;TaxYear, TaxParams&gt; = {
+  2024: { salaryDeductionMin: 550_000, dependentIncomeLimit: 480_000, hasSpecialRelativeDeduction: false, /* … */ },
+  2025: { salaryDeductionMin: 650_000, dependentIncomeLimit: 580_000, hasSpecialRelativeDeduction: true,  /* … */ },
+  2026: { salaryDeductionMin: 740_000, dependentIncomeLimit: 620_000, hasSpecialRelativeDeduction: true,  /* … */ },
+}
+function paramsFor(year: TaxYear): TaxParams { return PARAMS[year] }</code></pre>
+        <p>計算関数はこの <code>TaxParams</code> を引数で受け取り、内部に生の数字（<code>580_000</code> など）を一切書かない。こうすると「令和8年分の計算をしたい」は <code>paramsFor(2026)</code> を渡すだけになり、ロジックは共通のまま走ります。<strong>年分は if 分岐ではなくデータの切り替えで表現する</strong>——これが年度パラメータ化の核です。</p>
+
+        <h3>改正差分の吸収パターン</h3>
+        <p>改正には性質の違ういくつかのパターンがあり、それぞれ吸収の仕方が異なります。第5部で見た実例に当てはめます。</p>
+        <div class="scroll-x"><table>
+          <tr><th>改正パターン</th><th>第5部の実例</th><th>吸収の仕方</th></tr>
+          <tr><td>① 金額だけ変わる</td><td>基礎控除 48→58→62万、所得要件 48→58→62万</td><td>年度テーブルの数値差し替えのみ。ロジック不変</td></tr>
+          <tr><td>② 表構造が変わる</td><td>基礎控除が「一律」→「合計所得で逓減する表」へ（令和7年）</td><td>スカラーをテーブル型に。参照関数を表引きに置換</td></tr>
+          <tr><td>③ 控除が新設される</td><td>特定親族特別控除の創設（令和7年）</td><td>判定・計算に新ステップ追加。年度フラグでオン/オフ</td></tr>
+          <tr><td>④ 概念の付け替え</td><td>給与所得控除→基礎控除への振替（令和2年）</td><td>移行年を境に配分を切り替え。過年度は旧配分を保持</td></tr>
+          <tr><td>⑤ 適用タイミングのズレ</td><td>令和8年：年調は改正・月次税額表は据置き（第22章）</td><td>月次と年調で別パラメータ。差額を年調で精算</td></tr>
+        </table></div>
+        <p>①は最も楽で、テーブルの数字を替えるだけ。②の令和7年の基礎控除は「一律48万円」から「合計所得金額に応じて95/88/68/63/58…と逓減する表」へ<strong>構造ごと変わった</strong>例で、<code>basicDeduction: Yen</code> を <code>basicDeductionTable</code> に変えるリファクタが要ります。だからこそ最初から<strong>スカラーでなくテーブルで持つ</strong>設計にしておくと傷が浅い。③の特定親族特別控除は判定に <code>'specialRelative?'</code> という新しい札（第24章）が増えた例で、<code>hasSpecialRelativeDeduction</code> フラグで年度ごとに有効化します。</p>
+        <p>とりわけ実装者を悩ませるのが⑤です。令和8年分は<strong>年末調整には改正が反映されるのに、月次の源泉徴収税額表は令和8年中は据え置き</strong>（第22章）。つまり月次と年調で<strong>別の年度パラメータが同時に生きる</strong>。月次計算には「改正前の税額表」を、年調計算には「改正後の基礎控除等」を使い、両者の差額を年末調整で精算する——月次と年調を同じパラメータで動かす素朴な実装は、この年に破綻します。</p>
+        <aside class="engineer-note"><span class="tag">ENGINEER'S NOTE — 特例と本則を区別してデータに刻む</span>
+        令和7・8年分の基礎控除の上乗せ（132万〜655万円の帯に付く88/68/63万円）や、給与所得控除最低保障の74万円は、いずれも<strong>時限的な特例</strong>で、令和9年分以後は本則へ調整される予定です（RESEARCH）。年度テーブルには「これは特例か本則か」「いつまでか」をメタデータとして残しておくと、将来の逓減を淡々と反映できます。<code>{ value: 740_000, kind: 'special', until: 2027 }</code> のように、数値に<strong>由来と期限</strong>を添える。「なぜこの年だけこの額なのか」を後任が制度大綱まで遡らずに読めることが、毎年触るコードの寿命を延ばします。</aside>
+
+        <h3>過年度の再計算可能性 —— 「今年のロジック」で過去を上書きしない</h3>
+        <p>年末調整プロダクトは、当年を計算して終わりではありません。第15章で見た<strong>再年末調整</strong>（年末調整後に扶養の異動等が判明し、その年分をやり直す）や、過年度分の訂正・問い合わせが必ず発生します。ここで致命的なのが、<strong>コードを「常に最新年度のロジック」に更新してしまい、過去年分を今年の制度で計算してしまう</strong>設計です。</p>
+        <p>令和6年分の再年末調整を令和8年分の基礎控除62万円で計算したら、当然まちがいです。過年度は<strong>その年分の制度で</strong>再計算されなければならない。年度パラメータ化ができていれば、これは <code>paramsFor(2024)</code> を渡すだけで自然に満たせます——旧年度のパラメータを消さずに<strong>すべて保持し続ける</strong>ことが条件です。</p>
+        <pre><code><span class="cmt">// 過年度も「その年分のパラメータ」で再計算できる</span>
+function reCompute(filing: EmployeeFiling): Result {
+  const params = paramsFor(filing.taxYear)  <span class="cmt">// 2024でも2026でも同じ入口</span>
+  return runPipeline(filing, params)         <span class="cmt">// ロジックは共通・パラメータだけ違う</span>
+}
+<span class="cmt">// 再年末調整＝入力の一部を差し替えて同じ関数を再実行するだけ（べき等）</span></code></pre>
+        <p>第24章で「各段の中間成果物を残せ」と述べたことも、ここで効きます。当初計算の入力・区分札・各段の金額を保存してあれば、再年末調整は<strong>差し替えた入力で同じパイプラインを再実行</strong>し、旧結果との差分を精算するだけ。第25章の「計算はべき等であるべき」という原則が、再計算可能性の土台になっているわけです。まとめると、毎年変わる制度に耐える設計は<strong>(1) 定数を年度テーブルに追い出す (2) 旧年度パラメータを捨てない (3) ロジックはべき等に保つ</strong>——この3点に集約されます。</p>
+
+        <div class="check-wrap"><h3>理解度チェック</h3>
+          <details class="check"><summary>Q1. 年末調整プロダクトで「年分（taxYear）」をすべての計算に持たせるのはなぜですか。</summary><p>基礎控除・給与所得控除・所得要件・速算表・様式など、金額と要件がほぼ例外なく年分に依存するためです。制度定数を年度テーブルに追い出し、計算関数はそのパラメータを引数で受け取ることで、年分の違いを if 分岐ではなくデータの切り替えで表現できます。</p></details>
+          <details class="check"><summary>Q2. 令和8年分で「月次と年調に別の年度パラメータが同時に生きる」とはどういうことですか。</summary><p>令和8年分は年末調整には改正（基礎控除引き上げ等）が反映される一方、月次の源泉徴収税額表は令和8年中は据え置かれます。そのため月次計算は改正前パラメータ、年調計算は改正後パラメータで動かし、両者の差額を年末調整で精算します。月次と年調を同一パラメータで動かす実装はこの年に破綻します。</p></details>
+          <details class="check"><summary>Q3. 過年度分の再年末調整を正しく行うために、設計上どんな条件が必要ですか。</summary><p>過年度は「その年分の制度」で計算する必要があるため、旧年度のパラメータを消さずに保持し続けること、そしてロジックをべき等に保ち <code>paramsFor(過去の年)</code> を渡すだけで再計算できるようにすることです。当初計算の中間成果物を残しておけば、入力を差し替えて同じパイプラインを再実行し差分を精算できます。</p></details>
+        </div>
+      </section>
+
+      <section class="chapter" id="ch27">
+        <h2>第27章　用語逆引き</h2>
+        <div class="chap-map"><strong>この章の位置づけ：</strong>本書の締めくくりであり、実務の現場で最もよく開くページです。仕様書・申告書・先輩の口頭説明で出会うのは、正式名称ではなく「マル扶」「乙欄の人」「103万の壁」といった<strong>略称・通称・現場語</strong>です。この章は、そうした<strong>実務で出会う表現</strong>から<strong>正式名称・意味・該当章・巻末用語集</strong>へたどる逆引きインデックスです。巻末用語集（五十音順の正引き）と対になっています。</div>
+
+        <p>使い方：現場で聞いた言葉・帳票に書かれた記号を左端の表現から探し、<strong>正式名称と一言の意味</strong>を確認し、詳しく知りたければ<strong>該当章</strong>または<strong>用語集</strong>のリンクへ飛んでください。</p>
+
+        <h3>申告書・帳票の略称（マル◯ 系）</h3>
+        <div class="scroll-x"><table>
+          <tr><th>現場での表現</th><th>正式名称・意味</th><th>参照</th></tr>
+          <tr><td>マル扶（まるふ）</td><td>給与所得者の扶養控除等（異動）申告書。扶養・障害者・寡婦ひとり親等を申告し、甲欄適用の基礎になる書類</td><td><a href="#ch12">第12章</a></td></tr>
+          <tr><td>マル基配所（まるきはいしょ）</td><td>基礎控除申告書 兼 配偶者控除等申告書 兼 特定親族特別控除申告書 兼 所得金額調整控除申告書（統合様式）</td><td><a href="#ch12">第12章</a></td></tr>
+          <tr><td>マル保（まるほ）</td><td>給与所得者の保険料控除申告書。生命保険・地震保険・社会保険料・小規模企業共済等掛金を申告</td><td><a href="#ch8">第8章</a>／<a href="#ch12">第12章</a></td></tr>
+          <tr><td>マル配（まるはい）</td><td>配偶者控除等申告書（現在はマル基配所に統合）。配偶者控除・配偶者特別控除の申告部分</td><td><a href="#ch6">第6章</a></td></tr>
+          <tr><td>住宅ローンの申告書</td><td>給与所得者の（特定増改築等）住宅借入金等特別控除申告書。2年目以降の年末調整で使用</td><td><a href="#ch9">第9章</a></td></tr>
+          <tr><td>源泉徴収簿</td><td>各人別の計算の作業台。月々の支給・徴収と年末調整の計算過程を記録する帳簿</td><td><a href="#ch13">第13章</a></td></tr>
+          <tr><td>源泉徴収票</td><td>年間の支払金額・所得控除・源泉徴収税額を証明する書類。本人交付・税務署提出</td><td><a href="#ch13">第13章</a></td></tr>
+          <tr><td>給報（きゅうほう）</td><td>給与支払報告書。源泉徴収票とほぼ同内容を市区町村へ提出し、翌年度の住民税の基礎になる</td><td><a href="#ch16">第16章</a></td></tr>
+        </table></div>
+
+        <h3>徴収区分・対象者を指す言い方</h3>
+        <div class="scroll-x"><table>
+          <tr><th>現場での表現</th><th>正式名称・意味</th><th>参照</th></tr>
+          <tr><td>甲欄（こうらん）の人</td><td>マル扶を提出した主たる給与の受給者。月次税額表の甲欄を適用。年末調整の対象</td><td><a href="#ch2">第2章</a>／<a href="#g-koutan" class="term">用語集</a></td></tr>
+          <tr><td>乙欄（おつらん）の人</td><td>マル扶を出していない（＝他に主たる給与がある）従たる給与の受給者。乙欄で高めに源泉徴収。年末調整対象外</td><td><a href="#ch2">第2章</a>／<a href="#ch14">第14章</a></td></tr>
+          <tr><td>丙欄（へいらん）の人</td><td>日雇い・短期のアルバイト等に適用する日額表の丙欄</td><td><a href="#ch2">第2章</a></td></tr>
+          <tr><td>中途（ちゅうと）の人</td><td>中途入社者。前職の源泉徴収票を合算して年末調整する（田中さんのケース）</td><td><a href="#ch14">第14章</a></td></tr>
+          <tr><td>源泉控除対象配偶者</td><td>月次源泉で「扶養親族等の数」に数えられる配偶者（本人・配偶者の所得要件あり）</td><td><a href="#ch6">第6章</a></td></tr>
+          <tr><td>源泉控除対象親族</td><td>控除対象扶養親族または特定親族のうち合計所得100万円以下の者。令和8年分様式で記載区分の中心に</td><td><a href="#ch6">第6章</a>／<a href="#ch22">第22章</a></td></tr>
+          <tr><td>同一生計配偶者</td><td>納税者と生計を一にし合計所得が要件以下の配偶者（本人の所得を問わない概念）</td><td><a href="#ch6">第6章</a></td></tr>
+        </table></div>
+
+        <h3>「壁」と通称される金額</h3>
+        <div class="scroll-x"><table>
+          <tr><th>現場での表現</th><th>正体・意味</th><th>参照</th></tr>
+          <tr><td>103万円の壁</td><td>旧・給与収入の課税最低限／扶養の目安（給与所得控除55万＋基礎控除48万）。令和7年改正で崩れた表現</td><td><a href="#ch18">第18章</a>／<a href="#ch21">第21章</a></td></tr>
+          <tr><td>123万円（の壁）</td><td>令和7年分の扶養親族等の給与収入目安（合計所得58万円以下に相当）</td><td><a href="#ch6">第6章</a></td></tr>
+          <tr><td>160万円／178万円の壁</td><td>令和7年／令和8年分の課税最低限（基礎控除・給与所得控除引き上げ後）。税の壁。社保の壁とは別物</td><td><a href="#ch18">第18章</a>／<a href="#ch22">第22章</a></td></tr>
+          <tr><td>106万・130万の壁</td><td><strong>社会保険</strong>の壁（被扶養・被保険者の境界）。税の壁と混同されやすいが別制度</td><td><a href="#ch18">第18章</a></td></tr>
+          <tr><td>150万・201万の壁</td><td>配偶者特別控除が満額／消失する配偶者の給与収入の目安</td><td><a href="#ch6">第6章</a></td></tr>
+        </table></div>
+
+        <h3>控除・計算まわりの通称</h3>
+        <div class="scroll-x"><table>
+          <tr><th>現場での表現</th><th>正式名称・意味</th><th>参照</th></tr>
+          <tr><td>基礎（きそ）</td><td>基礎控除。合計所得金額に応じ逓減（令和7年分は最大95万円）</td><td><a href="#ch7">第7章</a>／<a href="#g-goukei" class="term">用語集</a></td></tr>
+          <tr><td>特定（とくてい）</td><td>特定扶養親族（19〜22歳、控除63万円）。※「特定親族」とは別</td><td><a href="#ch6">第6章</a></td></tr>
+          <tr><td>特定親族／特親特（とくしんとく）</td><td>特定親族特別控除。19〜23歳未満・合計所得58万超123万以下の親族が対象（令和7年創設）</td><td><a href="#ch6">第6章</a>／<a href="#ch21">第21章</a></td></tr>
+          <tr><td>老親（ろうしん）／同居老親</td><td>老人扶養親族（70歳以上）。うち同居の直系尊属は控除が上乗せ（鈴木さんの母ハル）</td><td><a href="#ch6">第6章</a></td></tr>
+          <tr><td>調整控除／所調（しょちょう）</td><td>所得金額調整控除。年収850万円超で23歳未満扶養等の要件を満たす場合の給与所得の調整</td><td><a href="#ch5">第5章</a></td></tr>
+          <tr><td>iDeCo（イデコ）</td><td>個人型確定拠出年金。掛金は小規模企業共済等掛金控除の対象</td><td><a href="#ch8">第8章</a></td></tr>
+          <tr><td>復興（ふっこう）／2.1%</td><td>復興特別所得税。基準所得税額に2.1%上乗せ（令和19年まで）。年調年税額は×102.1%</td><td><a href="#ch10">第10章</a></td></tr>
+          <tr><td>年調年税額（ねんちょうねんぜいがく）</td><td>その年に納めるべき所得税＋復興特別所得税の確定額。源泉徴収済額と突き合わせ過不足を精算</td><td><a href="#ch10">第10章</a>／<a href="#ch15">第15章</a></td></tr>
+          <tr><td>速算表（そくさんひょう）</td><td>課税所得から算出所得税額を「税率×所得−控除額」で一発計算する表</td><td><a href="#ch10">第10章</a></td></tr>
+          <tr><td>税額表（ぜいがくひょう）</td><td>月額表・日額表。毎月の源泉徴収税額を扶養親族等の数と甲乙欄で引く表</td><td><a href="#ch2">第2章</a></td></tr>
+        </table></div>
+
+        <h3>手続き・周辺制度の通称</h3>
+        <div class="scroll-x"><table>
+          <tr><th>現場での表現</th><th>正式名称・意味</th><th>参照</th></tr>
+          <tr><td>還付（かんぷ）／追徴（ついちょう）</td><td>年調年税額と源泉徴収済額の差の精算。徴収しすぎは還付、不足は追加徴収</td><td><a href="#ch3">第3章</a>／<a href="#ch15">第15章</a></td></tr>
+          <tr><td>再年調（さいねんちょう）</td><td>再年末調整。年末調整後に扶養異動等が判明した場合の同一年分のやり直し</td><td><a href="#ch15">第15章</a></td></tr>
+          <tr><td>特徴（とくちょう）／普徴（ふちょう）</td><td>特別徴収／普通徴収。住民税を給与天引きするか本人納付するか</td><td><a href="#ch16">第16章</a></td></tr>
+          <tr><td>法定調書（ほうていちょうしょ）</td><td>支払調書・源泉徴収票等を集計した法定調書合計表を税務署へ提出する仕組み</td><td><a href="#ch17">第17章</a></td></tr>
+          <tr><td>年調ソフト</td><td>国税庁の年末調整控除申告書作成用ソフト。電子的控除証明書と連携</td><td><a href="#ch19">第19章</a></td></tr>
+          <tr><td>eLTAX（エルタックス）／eTax</td><td>地方税ポータル／国税電子申告。給与支払報告書・法定調書の電子提出に使用</td><td><a href="#ch16">第16章</a>／<a href="#ch19">第19章</a></td></tr>
+        </table></div>
+
+        <aside class="engineer-note"><span class="tag">ENGINEER'S NOTE — 用語のブレは仕様バグの温床</span>
+        逆引きで痛感するのは、<strong>同じものに複数の呼び名、似た名前で別物</strong>が多いことです。「特定扶養親族」と「特定親族（特別控除）」、「源泉控除対象配偶者」と「同一生計配偶者」と「控除対象配偶者」、税の壁と社保の壁——これらを仕様書やDBのカラム名で混同すると、そのまま計算バグになります。実装では<strong>正式名称に一意のコード（enum）を割り当て、現場語はエイリアス表として別に持つ</strong>のが安全です。この逆引き表はそのエイリアス表の下敷きになります。迷ったら正式名称へ正規化し、正式名称は巻末用語集で意味を確定させてから使うこと。</aside>
+
+        <div class="check-wrap"><h3>理解度チェック</h3>
+          <details class="check"><summary>Q1. 「乙欄の人」とはどういう人で、年末調整の対象になりますか。</summary><p>マル扶（扶養控除等申告書）を提出していない、つまり他に主たる給与がある従たる給与の受給者です。月次は乙欄で高めに源泉徴収され、<strong>その勤務先での年末調整の対象にはなりません</strong>（第2・14章）。</p></details>
+          <details class="check"><summary>Q2. 「103万円の壁」と「130万円の壁」は同じ種類の壁ですか。</summary><p>いいえ。103万円は<strong>税</strong>の壁（旧・課税最低限／扶養の目安）で令和7年改正で崩れた表現、130万円は<strong>社会保険</strong>の被扶養の壁で、別制度の話です。混同を解くのが第18章の主題です。</p></details>
+          <details class="check"><summary>Q3. 「特定扶養親族」と「特定親族（特別控除）」の違いは何ですか。</summary><p>特定扶養親族は19〜22歳で扶養控除63万円の対象（第6章）。特定親族特別控除は令和7年創設で、19歳以上23歳未満かつ合計所得58万円超123万円以下という、扶養控除の枠を外れる所得帯の親族をなだらかに救う別の制度です。名前が似ていますが対象所得帯も根拠も異なります。</p></details>
+        </div>
+      </section>
+
+      <!-- ============ 巻末 ============ -->
+      <section class="part-cover" id="glossary"><h2>巻末　専門用語集</h2></section>
+      <section class="chapter" id="glossary-body">
+        <p>本書の本文に登場する主要用語を五十音順にまとめました。本文中で <span class="term" style="cursor:default">下線つきの語</span> をクリックすると、この用語集の該当項目へ飛びます。各項目末尾のリンクから詳しく解説した章へ戻れます。金額・要件を含む用語は改正の影響を受けるため、年分注記を付しています<span class="year-note">令和7年分・令和8年分の別に注意</span>。</p>
+
+        <dl class="glossary">
+          <!-- ===== か行 ===== -->
+          <dt id="g-kakutei">確定申告（かくていしんこく）</dt>
+          <dd>納税者本人が1年分の所得と税額を計算し、翌年2/16〜3/15に税務署へ申告・精算する手続き。年末調整で処理できない医療費控除・寄附金控除（ふるさと納税）・初年の住宅ローン控除などは確定申告で行う。年末調整は「会社が行う簡易な精算」、確定申告は「本人が行う本来の精算」という関係。<span class="year-note">関連章：<a href="#ch4">第4章</a>／<a href="#ch15">第15章</a></span></dd>
+
+          <dt id="g-kazeishotoku">課税所得（課税給与所得金額）</dt>
+          <dd>税率をかける直前の金額。給与所得から所得控除の合計を差し引いて求める（給与所得者は「課税給与所得金額」）。ここに速算表の税率をかけて所得税額を算出する。「収入→所得→課税所得→税額」の3段目にあたる。<span class="year-note">関連章：<a href="#ch1">第1章</a>／<a href="#ch10">第10章</a></span></dd>
+
+          <dt id="g-kafu">寡婦控除（かふこうじょ）</dt>
+          <dd>夫と離婚・死別した後、一定の要件を満たす女性が受けられる人的控除（27万円）。ひとり親に該当する場合はひとり親控除が優先される。本人の合計所得金額500万円以下が要件。<span class="year-note">令和7年分時点。関連章：<a href="#ch7">第7章</a></span></dd>
+
+          <dt id="g-kyuyokoujo">給与所得控除（きゅうよしょとくこうじょ）</dt>
+          <dd>給与収入から差し引く、会社員の「概算経費」にあたる控除。収入額に応じて段階的に増え、上限は195万円。最低保障額は令和7年分で65万円<span class="year-note">令和8年分は特例で74万円</span>。これを引いた残りが給与所得。<span class="year-note">関連章：<a href="#ch5">第5章</a></span></dd>
+
+          <dt id="g-kihaisho">基礎控除申告書（マル基配所）</dt>
+          <dd>正式には「基礎控除申告書 兼 配偶者控除等申告書 兼 特定親族特別控除申告書 兼 所得金額調整控除申告書」。4つの申告を1枚に統合した様式で、本人・配偶者・特定親族の所得や、所得金額調整控除の判定材料を集める。<span class="year-note">関連章：<a href="#ch12">第12章</a></span></dd>
+
+          <dt id="g-kinrougakusei">勤労学生控除（きんろうがくせいこうじょ）</dt>
+          <dd>働きながら学ぶ学生本人が受けられる人的控除（27万円）。合計所得金額が一定以下などの要件がある。<span class="year-note">令和7年分時点。関連章：<a href="#ch7">第7章</a></span></dd>
+
+          <dt id="g-kiso">基礎控除（きそこうじょ）</dt>
+          <dd>すべての納税者が受けられる基本の所得控除。かつては一律だったが、近年は合計所得金額に応じて額が変わる関数になった。令和7年分は低所得帯で最大95万円、標準帯で58万円（本則）<span class="year-note">令和8年分は本則62万円</span>。高所得で逓減し消滅する。<span class="year-note">関連章：<a href="#ch7">第7章</a>／<a href="#ch21">第21章</a></span></dd>
+
+          <dt id="g-koutan">甲欄／乙欄／丙欄（こうらん・おつらん・へいらん）</dt>
+          <dd>月次の源泉徴収税額表の区分。<strong>甲欄</strong>は扶養控除等申告書を提出した主たる給与に適用（年末調整の対象）。<strong>乙欄</strong>は申告書未提出＝従たる給与に適用し高めに徴収（年末調整の対象外）。<strong>丙欄</strong>は日雇い・短期労働の日額表に適用。<span class="year-note">関連章：<a href="#ch2">第2章</a>／<a href="#ch14">第14章</a></span></dd>
+
+          <dt id="g-fuyou">控除対象扶養親族（こうじょたいしょうふようしんぞく）</dt>
+          <dd>生計を一にする親族のうち、その年12/31時点で16歳以上・合計所得金額が要件以下の人。扶養控除の対象になる。うち19〜22歳は特定扶養親族（控除が手厚い）、70歳以上は老人扶養親族。<span class="year-note">令和7年分の所得要件は合計所得58万円以下。関連章：<a href="#ch6">第6章</a></span></dd>
+
+          <dt id="g-goukei">合計所得金額（ごうけいしょとくきんがく）</dt>
+          <dd>給与所得・事業所得など各種所得を合計した金額（純損失等の繰越控除前）。扶養・配偶者控除や基礎控除の適用可否・控除額を決める最重要の判定基準。似た概念に「総所得金額等」があり、繰越控除の扱いが異なる。<span class="year-note">関連章：<a href="#ch6">第6章</a>／<a href="#ch5">第5章</a></span></dd>
+
+          <dt id="g-gensen">源泉徴収（げんせんちょうしゅう）</dt>
+          <dd>給与の支払者が、支払時に所得税を天引きして国へ納付する仕組み。国は個々の労働者から取り立てる手間なく税を集められる。天引きはあくまで概算であり、年末調整で精算される。<span class="year-note">関連章：<a href="#ch2">第2章</a></span></dd>
+
+          <dt id="g-haiguusha">源泉控除対象配偶者・同一生計配偶者（げんせんこうじょたいしょうはいぐうしゃ）</dt>
+          <dd><strong>同一生計配偶者</strong>は、生計を一にし合計所得金額が要件以下の配偶者（本人の所得は問わない）。<strong>源泉控除対象配偶者</strong>は、本人の所得も要件を満たし、月次源泉で「扶養親族等の数」に数えられる配偶者。控除対象配偶者（年末調整で配偶者控除の対象となる配偶者）とは判定軸が異なるので注意。<span class="year-note">関連章：<a href="#ch6">第6章</a></span></dd>
+
+          <dt id="g-gensenshinzoku">源泉控除対象親族（げんせんこうじょたいしょうしんぞく）</dt>
+          <dd>令和8年分の扶養控除等申告書で記載の中心となる区分。控除対象扶養親族または特定親族のうち、合計所得金額100万円以下の者を指す。特定親族特別控除の創設に伴い、月次の「扶養親族等の数」に反映するために設けられた。<span class="year-note">令和8年分から。関連章：<a href="#ch6">第6章</a>／<a href="#ch22">第22章</a></span></dd>
+
+          <!-- ===== さ行 ===== -->
+          <dt id="g-shakaihoken">社会保険料控除（しゃかいほけんりょうこうじょ）</dt>
+          <dd>健康保険・厚生年金・国民年金・介護保険などの保険料を、支払った全額所得控除できる物的控除。本人負担分のほか、生計を一にする親族の分を本人が支払った場合も対象。<span class="year-note">関連章：<a href="#ch8">第8章</a></span></dd>
+
+          <dt id="g-jutaku">住宅借入金等特別控除（じゅうたくしゃくにゅうきんとうとくべつこうじょ）</dt>
+          <dd>住宅ローンを組んでマイホームを取得等した場合に、年末残高の一定割合を<strong>税額から</strong>直接差し引く税額控除。初年は確定申告が必須、2年目以降は残高証明書を添えて年末調整で処理できる。<span class="year-note">近年は控除率0.7%・原則13年。関連章：<a href="#ch9">第9章</a></span></dd>
+
+          <dt id="g-shougaisha">障害者控除（しょうがいしゃこうじょ）</dt>
+          <dd>本人・同一生計配偶者・扶養親族が障害者に該当する場合の人的控除。区分に応じ27万／40万（特別障害者）／75万円（同居特別障害者）。<span class="year-note">関連章：<a href="#ch7">第7章</a></span></dd>
+
+          <dt id="g-shoukibo">小規模企業共済等掛金控除（しょうきぼきぎょうきょうさいとうかけきんこうじょ）</dt>
+          <dd>小規模企業共済やiDeCo（個人型確定拠出年金）の掛金を全額所得控除できる物的控除。老後資金の自助努力を税制で後押しする趣旨。<span class="year-note">関連章：<a href="#ch8">第8章</a></span></dd>
+
+          <dt id="g-shotokukoujo">所得控除（しょとくこうじょ）</dt>
+          <dd>税率をかける前の課税所得を圧縮する控除。基礎控除・扶養控除などの人的控除と、社会保険料控除・生命保険料控除などの物的控除がある。税額から直接引く「税額控除」とは効き方が異なる（引く位置が違う）。<span class="year-note">関連章：<a href="#ch1">第1章</a></span></dd>
+
+          <dt id="g-shotokuchosei">所得金額調整控除（しょとくきんがくちょうせいこうじょ）</dt>
+          <dd>給与収入850万円超で、23歳未満の扶養親族がいる、または本人・扶養親族等が特別障害者などの要件を満たす場合に、給与所得を追加で圧縮する控除。給与所得控除の上限で不利になる子育て・介護世帯への配慮。<span class="year-note">関連章：<a href="#ch5">第5章</a></span></dd>
+
+          <dt id="g-seimeihoken">生命保険料控除（せいめいほけんりょうこうじょ）</dt>
+          <dd>生命保険・介護医療保険・個人年金保険の保険料に応じた物的控除。契約時期で新制度・旧制度に分かれ、計算式と上限が異なる（全体上限は12万円）。<span class="year-note">関連章：<a href="#ch8">第8章</a></span></dd>
+
+          <dt id="g-seikei">生計を一にする（せいけいをいつにする）</dt>
+          <dd>扶養・配偶者控除の判定に使う概念。同居している必要はなく、単身赴任や進学で別居していても、生活費・学費などを常に送金し合っていれば「生計を一にする」に該当する。財布が一つかどうかで判断する。<span class="year-note">関連章：<a href="#ch6">第6章</a></span></dd>
+
+          <dt id="g-zeigakukoujo">税額控除（ぜいがくこうじょ）</dt>
+          <dd>算出した所得税額から<strong>直接</strong>差し引く控除。代表は住宅借入金等特別控除。所得控除が課税所得を減らして間接的に税を下げるのに対し、税額控除は税額を1円単位でそのまま減らすため効きが大きい。<span class="year-note">関連章：<a href="#ch9">第9章</a>／<a href="#ch1">第1章</a></span></dd>
+
+          <dt id="g-zeigakuhyo">税額表（ぜいがくひょう）／月額表・日額表</dt>
+          <dd>毎月（毎日）の源泉徴収税額を求める国税庁の表。給与額と「扶養親族等の数」、甲欄・乙欄の別で税額を引く。月給者は<strong>月額表</strong>、日雇い等は<strong>日額表</strong>を用いる。年末調整で使う速算表とは別物。<span class="year-note">関連章：<a href="#ch2">第2章</a></span></dd>
+
+          <dt id="g-soshotoku">総所得金額等（そうしょとくきんがくとう）</dt>
+          <dd>合計所得金額から純損失・雑損失などの繰越控除を差し引いた後の金額。医療費控除や寄附金控除の限度額計算などで用いる。合計所得金額と混同しやすいが、繰越控除の反映有無で異なる。<span class="year-note">関連章：<a href="#ch6">第6章</a></span></dd>
+
+          <dt id="g-sokusan">速算表（そくさんひょう）</dt>
+          <dd>課税所得金額から所得税額を「課税所得×税率−控除額」で一度に計算できる表。累進税率の各段階を階段状に足し上げる代わりに、一発で算出できるよう変換したもの。<span class="year-note">関連章：<a href="#ch10">第10章</a></span></dd>
+
+          <!-- ===== た行 ===== -->
+          <dt id="g-choshugimusha">徴収義務者（ちょうしゅうぎむしゃ）</dt>
+          <dd>給与から源泉徴収し、原則翌月10日までに国へ納付する義務を負う者。通常は給与を支払う会社。計算・徴収・納付の責任を国から委ねられており、誤りは納税額の誤りに直結する。<span class="year-note">関連章：<a href="#ch2">第2章</a></span></dd>
+
+          <dt id="g-jishin">地震保険料控除（じしんほけんりょうこうじょ）</dt>
+          <dd>地震保険の保険料に応じた物的控除（上限5万円）。経過措置として、一定の旧長期損害保険契約も対象になる。<span class="year-note">関連章：<a href="#ch8">第8章</a></span></dd>
+
+          <dt id="g-tokuteishinzoku">特定親族特別控除（とくていしんぞくとくべつこうじょ）</dt>
+          <dd>令和7年創設。19歳以上23歳未満で合計所得金額58万円超123万円以下の親族（＝特定扶養控除の枠を外れる所得帯）について、控除額をなだらかに先細りさせる制度。大学生年代のアルバイト収入増で扶養控除が崖落ちするのを防ぐ。<span class="year-note">令和7年分から。関連章：<a href="#ch6">第6章</a>／<a href="#ch21">第21章</a></span></dd>
+
+          <dt id="g-tokuteifuyou">特定扶養親族（とくていふようしんぞく）</dt>
+          <dd>控除対象扶養親族のうち、その年12/31時点で19歳以上23歳未満の人。教育費のかさむ年代への配慮で扶養控除が63万円と手厚い。名前の似た「特定親族特別控除」とは対象所得帯も根拠も異なるので注意。<span class="year-note">関連章：<a href="#ch6">第6章</a></span></dd>
+
+          <dt id="g-tokucho">特別徴収／普通徴収（とくべつちょうしゅう・ふつうちょうしゅう）</dt>
+          <dd>住民税の納め方。<strong>特別徴収</strong>は会社が毎月の給与から天引きして市区町村へ納付（原則）。<strong>普通徴収</strong>は本人が納付書で年4回納める。年末調整のデータは給与支払報告書として市区町村へ渡り、翌年度の特別徴収税額の基礎になる。<span class="year-note">関連章：<a href="#ch16">第16章</a></span></dd>
+
+          <!-- ===== な行 ===== -->
+          <dt id="g-nencho">年末調整（ねんまつちょうせい）</dt>
+          <dd>毎月の源泉徴収額の合計（概算）と、その年に本来納めるべき税額（実額）とのズレを、年末に会社が精算する手続き。徴収を会社に委ねた延長で精算も委ねた、日本特有の仕組み。過納なら還付、不足なら追徴する。<span class="year-note">関連章：<a href="#ch3">第3章</a></span></dd>
+
+          <dt id="g-nenchonen">年調年税額（ねんちょうねんぜいがく）</dt>
+          <dd>年末調整で確定する、その年に納めるべき所得税＋復興特別所得税の額。算出所得税額から税額控除を引いた年調所得税額に102.1%を掛け、100円未満を切り捨てて求める。源泉徴収済額と突き合わせて過不足を精算する。<span class="year-note">関連章：<a href="#ch10">第10章</a>／<a href="#ch15">第15章</a></span></dd>
+
+          <!-- ===== は行 ===== -->
+          <dt id="g-haigusha">配偶者控除（はいぐうしゃこうじょ）</dt>
+          <dd>生計を一にし合計所得金額が要件以下の配偶者がいる場合の人的控除。本人（納税者）の合計所得金額が900万円を超えると逓減し、1,000万円超で消滅する。本人・配偶者双方の所得で二次元に判定する。<span class="year-note">関連章：<a href="#ch6">第6章</a></span></dd>
+
+          <dt id="g-haigushatokubetsu">配偶者特別控除（はいぐうしゃとくべつこうじょ）<span id="g-haiguutokubetsu"></span></dt>
+          <dd>配偶者の所得が配偶者控除の要件を超えても、一定範囲までは控除を段階的に残す制度。配偶者の給与収入150万円までは満額（38万円）、201万円で消滅。「働くと急に損をする」壁を緩和する趣旨。本人の所得制限も配偶者控除と同様にかかる。<span class="year-note">関連章：<a href="#ch6">第6章</a>／<a href="#ch21">第21章</a></span></dd>
+
+          <dt id="g-hikyoju">非居住者（ひきょじゅうしゃ）</dt>
+          <dd>国内に住所がなく、かつ現在まで引き続き1年以上居所がない個人。国外に住む親族を扶養控除等の対象とする場合は、送金関係書類や親族関係書類など追加の証明が必要になる。<span class="year-note">関連章：<a href="#ch6">第6章</a></span></dd>
+
+          <dt id="g-hitorioya">ひとり親控除（ひとりおやこうじょ）</dt>
+          <dd>婚姻歴や性別を問わず、生計を一にする子（総所得金額等48万円以下）がいる単身者が受けられる人的控除（35万円）。本人の合計所得金額500万円以下が要件。寡婦控除より優先して適用される。<span class="year-note">令和7年分時点。関連章：<a href="#ch7">第7章</a></span></dd>
+
+          <dt id="g-fukko">復興特別所得税（ふっこうとくべつしょとくぜい）</dt>
+          <dd>東日本大震災の復興財源として、基準所得税額に2.1%を上乗せする税（令和19年分まで）。年末調整では年調所得税額に102.1%を掛けることで所得税と一体で精算する。<span class="year-note">関連章：<a href="#ch10">第10章</a></span></dd>
+
+          <dt id="g-fuyoushinkoku">扶養控除等（異動）申告書／マル扶（まるふ）<span id="g-marufu"></span></dt>
+          <dd>その年最初の給与支払前までに提出する、扶養親族・障害者・寡婦ひとり親などを申告する書類。これを提出した給与が甲欄適用となり、年末調整の対象になる。異動があれば都度提出する。<span class="year-note">関連章：<a href="#ch12">第12章</a></span></dd>
+
+          <dt id="g-fuyousuu">扶養親族等の数（ふようしんぞくとうのかず）</dt>
+          <dd>月次の源泉徴収税額を税額表から引くときに使う人数。源泉控除対象配偶者と控除対象扶養親族の数を基礎に、障害者等がいれば加算する。年末調整の実額計算とは別に、毎月の概算徴収のために使う指標。<span class="year-note">関連章：<a href="#ch2">第2章</a></span></dd>
+
+          <dt id="g-maruho">保険料控除申告書／マル保（まるほ）</dt>
+          <dd>生命保険料控除・地震保険料控除・社会保険料控除・小規模企業共済等掛金控除を申告する書類。控除証明書を添付して、物的控除の適用材料を会社に提出する。<span class="year-note">関連章：<a href="#ch8">第8章</a>／<a href="#ch12">第12章</a></span></dd>
+
+          <dt id="g-houtei">法定調書（ほうていちょうしょ）</dt>
+          <dd>所得税法などで税務署への提出が義務づけられた資料の総称。源泉徴収票や支払調書などを集計した「法定調書合計表」とともに提出する。市区町村へは全員分の給与支払報告書を出す一方、税務署へは一定額超のみ提出する非対称がある。<span class="year-note">関連章：<a href="#ch17">第17章</a></span></dd>
+
+          <!-- ===== ら行 ===== -->
+          <dt id="g-roujin">老人扶養親族（ろうじんふようしんぞく）</dt>
+          <dd>控除対象扶養親族のうち、その年12/31時点で70歳以上の人。扶養控除が48万円と手厚く、同居の直系尊属（父母・祖父母）はさらに上乗せされ58万円になる。<span class="year-note">関連章：<a href="#ch6">第6章</a></span></dd>
+        </dl>
+      </section>
+
+    </main>
+  </div>
+</div>
+
+<script>
+(function(){
+  var root=document.documentElement, body=document.body;
+  // ---- theme toggle (no localStorage) ----
+  function currentDark(){
+    var t=root.getAttribute('data-theme');
+    if(t) return t==='dark';
+    return window.matchMedia('(prefers-color-scheme: dark)').matches;
+  }
+  function toggleTheme(){ root.setAttribute('data-theme', currentDark()?'light':'dark'); }
+  document.getElementById('themeBtn').addEventListener('click', toggleTheme);
+  document.getElementById('themeBtnMobile').addEventListener('click', toggleTheme);
+
+  // ---- mobile nav ----
+  var sidebar=document.getElementById('sidebar'), overlay=document.getElementById('overlay');
+  function openNav(){ body.classList.add('nav-open'); }
+  function closeNav(){ body.classList.remove('nav-open'); }
+  document.getElementById('menuBtn').addEventListener('click', openNav);
+  overlay.addEventListener('click', closeNav);
+  sidebar.addEventListener('click', function(e){ if(e.target.tagName==='A') closeNav(); });
+
+  // ---- scrollspy ----
+  var links=[].slice.call(document.querySelectorAll('#toc a'));
+  var map={};
+  links.forEach(function(a){ var id=a.getAttribute('href').slice(1); var el=document.getElementById(id); if(el) map[id]=a; });
+  var targets=Object.keys(map).map(function(id){return document.getElementById(id);});
+  function setActive(id){
+    links.forEach(function(a){a.classList.remove('active');});
+    if(map[id]){ map[id].classList.add('active');
+      map[id].scrollIntoView({block:'nearest'});
+    }
+  }
+  var io=new IntersectionObserver(function(entries){
+    entries.forEach(function(en){ if(en.isIntersecting) setActive(en.target.id); });
+  },{rootMargin:'-10% 0px -80% 0px', threshold:0});
+  targets.forEach(function(t){ io.observe(t); });
+})();
+</script>
+</body>
+</html>
