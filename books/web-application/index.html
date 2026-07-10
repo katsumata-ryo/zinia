@@ -966,7 +966,77 @@ getUser(id, (user) =&gt; {
       <section class="chapter" id="ch13">
         <h2>第13章　Webサーバとアプリケーションサーバ</h2>
         <div class="chap-hole"><span class="label">この章で埋まる穴</span>nginx・Puma・Rackの役割分担。なぜアプリの前にWebサーバを置くのか、Rackという「共通のインターフェース」が何を標準化したのか。<code>rackup</code>の1メソッドがフレームワークとサーバをどう繋いでいるかを見ます。</div>
-        <p class="placeholder">（執筆予定）</p>
+
+        <p>本番でRailsを動かすと、必ず複数のプログラムが連なっている。<code>nginx</code>があって、その後ろに<code>Puma</code>があって、その中でRailsが動く。開発中は<code>rails server</code>一発で全部済むのに、なぜ本番ではわざわざ分けるのか。そして「アプリケーションサーバ」と「Webサーバ」は何が違うのか——この境界は、名前が似ているせいで意外と曖昧なまま放置されがちだ。この章は、<strong>リクエストがOSのソケットに届いてから、Railsのコントローラの<code>action</code>が呼ばれるまで</strong>の間に立っている登場人物を、それぞれ「何の問題を解くために存在するのか」で並べ直す。<a href="#ch10">第10章</a>で触れた「nginxやCDNがHTTP/2を終端する」の“終端”が、ここで具体的な役割分担として姿を現す。</p>
+
+        <h3>役割分担の全体像 — 玄関・受付・専門職</h3>
+        <p>まず登場人物を一望する。外から来たHTTPリクエストは、おおむね次の順に手渡される。</p>
+        <div class="scroll-x"><table>
+          <thead><tr><th>層</th><th>代表例</th><th>主な仕事</th></tr></thead>
+          <tbody>
+            <tr><td>リバースプロキシ／Webサーバ</td><td>nginx</td><td>TLS終端、静的ファイル配信、バッファリング、負荷分散、遅い相手からアプリを守る</td></tr>
+            <tr><td>アプリケーションサーバ</td><td>Puma / Unicorn</td><td>HTTPをRubyの世界へ翻訳し、プロセス／スレッドを管理してアプリを実行する</td></tr>
+            <tr><td>インターフェース規約</td><td>Rack</td><td>「サーバ」と「フレームワーク」の間の共通語。両者を疎結合にする</td></tr>
+            <tr><td>フレームワーク／アプリ</td><td>Rails</td><td>ルーティング・ビジネスロジック・ビュー。実際の“中身”</td></tr>
+          </tbody>
+        </table></div>
+        <p>比喩でいえば、nginxは<strong>建物の玄関</strong>だ。外の乱雑な世界（不特定多数の接続、遅い回線、悪意ある大量リクエスト）に直接面し、身なりを整えてから中へ通す。Pumaは<strong>受付</strong>で、来客を捌ける人数分の窓口（スレッド／プロセス）を管理し、実際の仕事をする<strong>専門職</strong>（Rails）に取り次ぐ。Rackは、受付と専門職が交わす<strong>定型の伝票フォーマット</strong>だ。役割が分かれているのは分業の都合であって、どれか一つが偉いわけではない。</p>
+
+        <h3>なぜアプリの前にWebサーバを置くのか</h3>
+        <p>「Pumaも一応HTTPを喋れるのだから、直接インターネットに晒せばいいのでは？」という疑問は正当だ。実際、開発環境ではそうしている。それでも本番で前段にnginxを置くのは、<strong>アプリケーションサーバに任せると割に合わない仕事</strong>がいくつもあるからだ。</p>
+        <ul>
+          <li><strong>遅いクライアントからアプリを守る（バッファリング）</strong>：これが最大の理由だ。Pumaのスレッド／プロセスは<strong>数に限りがある高価な資源</strong>（<a href="#ch14">第14章</a>）。もし細い回線のクライアントが1バイトずつ10秒かけてリクエストを送ってきたら、その間ずっとPumaの窓口が1つ占有される。nginxが前に立ち、<strong>リクエストを全部受け取り切ってからまとめてPumaへ渡す</strong>ことで、Pumaは「完成したリクエスト」だけを最短時間で処理でき、貴重なスレッドを回転させられる。レスポンスの送出も同様に肩代わりする。</li>
+          <li><strong>静的ファイルの配信</strong>：画像やCSS・JSのようなファイルを返すのに、Rubyのプロセスを起こしてルーティングを通す必要はない。nginxはファイルをそのまま返すことに最適化されていて桁違いに速い。</li>
+          <li><strong>TLS終端</strong>：暗号化・復号の重い処理を前段で済ませ、内側は平文のHTTPで扱う。<a href="#ch10">第10章</a>で「CDNやnginxがHTTP/2を終端する」と言ったのはこれで、<strong>外向きはHTTP/2やTLS1.3、内向きはシンプルなHTTP/1.1</strong>という組み合わせが普通に成立する。プロトコルの進化を、アプリのコードを一切変えずに前段だけで取り込める。</li>
+          <li><strong>負荷分散とバッファの緩衝</strong>：複数のPumaプロセス（別サーバも含む）へリクエストを振り分け、片方を落として入れ替えるローリングデプロイの受け皿にもなる。</li>
+        </ul>
+        <aside class="eng-note"><span class="tag">補足</span>
+        近年は「nginxを省いてPuma／Pitchforkを直接前に出す」構成や、Cloud RunのようにプラットフォームがTLS終端とバッファリングを肩代わりする構成も一般的だ。読者のGCP経験でいえば、Cloud Runの<strong>ロードバランサ層がnginxの役回りの多く</strong>を吸収している。だからコンテナの中はアプリケーションサーバ（Puma）だけ、という構成が成り立つ。重要なのは「nginxが必ず要る」ではなく、<strong>“遅い外界からアプリを隔離しTLSを終端する層”という役割は誰かが必ず担っている</strong>という点だ。</aside>
+
+        <h3>Rack — サーバとフレームワークの間の「共通語」</h3>
+        <p>ここからが本章の核心だ。Pumaは<strong>Rails専用ではない</strong>。SinatraでもHanamiでも、あるいは自作のアプリでも動かせる。逆にRailsはPumaでもUnicornでもFalconでも動く。この<strong>「サーバとフレームワークが自由に組み替えられる」</strong>という当たり前を成立させているのが<strong>Rack</strong>だ。</p>
+        <p>もしRackが無ければどうなるか。Pumaは「Railsを起動する方法」「Sinatraを起動する方法」を個別に知る必要があり、フレームワーク側も「Puma対応」「Unicorn対応」をそれぞれ書く羽目になる。サーバN個×フレームワークM個の<strong>N×Mの組み合わせ地獄</strong>だ。Rackは、この間に<strong>たった一つの約束事</strong>を差し込むことでN×MをN＋Mに畳んだ。<a href="#ch8">第8章</a>以来くり返してきた「層の間にインターフェースを一枚挟むと、両側が独立して進化できる」という思想の、サーバサイドでの実例だ。</p>
+
+        <h3>Rackアプリの正体 — <code>call(env)</code>という1メソッド</h3>
+        <p>その「約束事」は驚くほど小さい。Rackアプリケーションとは、<strong><code>call</code>という1つのメソッドを持ち、環境ハッシュ<code>env</code>を受け取って、<code>[ステータス, ヘッダ, ボディ]</code>という3要素の配列を返すオブジェクト</strong>——ただそれだけだ。クラスである必要すらなく、<code>call</code>に応答できれば<code>lambda</code>でもいい。</p>
+        <pre><code class="lang-ruby"># これで完全なRackアプリケーション
+app = lambda do |env|
+  status  = 200
+  headers = { "content-type" =&gt; "text/plain" }
+  body    = ["Hello from Rack\n"]   # each で each するオブジェクトなら何でも
+  [status, headers, body]           # 必ず [status, headers, body] の3要素
+end
+
+run app  # config.ru にこう書けば puma で起動できる</code></pre>
+        <p>なぜこの形なのかを噛み砕く。<strong>入力の<code>env</code></strong>は、HTTPリクエストを<strong>1個のRubyハッシュに平らに詰め直したもの</strong>だ。<code>env["REQUEST_METHOD"]</code>は<code>"GET"</code>、<code>env["PATH_INFO"]</code>は<code>"/events"</code>、リクエストボディは<code>env["rack.input"]</code>にIOオブジェクトとして入っている。<a href="#ch9">第9章</a>で見たHTTPメソッド・パス・ヘッダが、ここで生のテキストから<strong>Rubyの世界のデータ構造に翻訳</strong>される。この翻訳こそがアプリケーションサーバ（Puma）の中心的な仕事だ。Pumaはソケットからバイト列を読み、HTTPとして解釈し、<code>env</code>を組み立てて<code>app.call(env)</code>を呼ぶ。</p>
+        <p><strong>出力の<code>[status, headers, body]</code></strong>も同じ発想の逆向きだ。アプリは「200で、このヘッダで、この本文」というRubyの値を返すだけでよく、それを<strong>HTTPレスポンスのバイト列に組み立ててソケットへ書き戻す</strong>のはPumaの責任だ。アプリは自分がどのサーバで動いているか、HTTP/1.1なのか2なのかを<strong>知らなくていい</strong>。この無知こそが疎結合の実体だ。</p>
+        <aside class="mongo-note"><span class="tag">MongoDB脳の翻訳</span>
+        Railsアプリ自体が「1個の巨大なRackアプリ」だと言うと驚くかもしれない。<code>config.ru</code>の<code>run Rails.application</code>がそれで、<code>Rails.application.call(env)</code>が全リクエストの入口だ。JSの世界でExpressのミドルウェアが<code>(req, res, next)</code>で連なるのと発想は同じで、<strong>「共通のシグネチャを持つ小さな処理を数珠つなぎにする」</strong>という設計パターンをRubyで具現化したのがRackだと捉えると腑に落ちる。</aside>
+
+        <h3>Rackミドルウェア — 「行き」と「帰り」に割り込む層</h3>
+        <p>Rackの真価は、この<code>call(env)</code>という統一形のおかげで<strong>処理を積み重ねられる</strong>ことにある。Rackミドルウェアとは、<strong>「別のRackアプリを内側に抱え、<code>env</code>を受け取ってから内側を<code>call</code>し、返ってきた<code>[status, headers, body]</code>を加工して返す」</strong>Rackアプリのことだ。入口と出口の両方に割り込める。</p>
+        <pre><code class="lang-ruby">class RequestTimer
+  def initialize(app)      # 内側のアプリ（次の層）を受け取る
+    @app = app
+  end
+
+  def call(env)
+    started = Time.now
+    status, headers, body = @app.call(env)   # 内側を呼ぶ（＝行き）
+    headers["x-runtime"] = (Time.now - started).to_s  # 帰りに加工
+    [status, headers, body]
+  end
+end</code></pre>
+        <p>Railsが標準で挟んでいる<code>Rack::Runtime</code>、<code>ActionDispatch::Static</code>、ログ、例外表示、セッション復元（<a href="#ch23">第23章</a>）などは、すべてこの形のミドルウェアが<strong>玉ねぎのように何重にも重なった</strong>ものだ。<code>bin/rails middleware</code>でその積み重ね（スタック）を一覧できる。リクエストは外側の層から内側へ潜り、Railsのルーティングに至り、レスポンスが同じ層を逆順に通って外へ戻る。<strong>認証・ロギング・CORSといった横断的な関心事を、アプリ本体から切り離して層として差し込める</strong>——これがRackがWeb開発にもたらした最大の恩恵だ。</p>
+
+        <h3>まとめ — 一本の受け渡しとして</h3>
+        <p>通して見ると、1つのリクエストは次のように受け渡されていく。<strong>nginx</strong>がTLSを解いてリクエストを受け切り（バッファリング）、<strong>Puma</strong>がソケットからHTTPを読んで<code>env</code>ハッシュに翻訳し、<strong>Rackミドルウェアの層</strong>を通しながら<strong>Rails</strong>の<code>call</code>へ渡す。Railsはルーティングしてコントローラを実行し、<code>[status, headers, body]</code>を返す。それが層を逆に上ってPumaでHTTPレスポンスに組み立てられ、nginxを経て外界へ戻る。それぞれの層が「自分の担当以外を知らない」ことで、TLSの進化もフレームワークの差し替えも独立して行える。次章では、この受け渡しの中でPumaが抱える<strong>「窓口をいくつ用意するか」——プロセスとスレッドの並行性</strong>に踏み込む。「Pumaのスレッドは高価な資源」と何度か書いた、その意味がそこで明らかになる。</p>
+
+        <div class="check-wrap"><h3>理解度チェック</h3>
+          <details class="check"><summary>Q1. なぜ本番ではアプリケーションサーバ（Puma）を直接インターネットに晒さず、前段にnginx等を置くのか？</summary><p>Pumaのスレッド／プロセスは数に限りのある高価な資源で、遅いクライアントに窓口を長時間占有されると処理能力が落ちる。nginxが前でリクエストを受け切ってからまとめて渡す（バッファリング）ことで、Pumaは完成したリクエストだけを短時間で処理できる。加えてTLS終端、静的ファイルの高速配信、負荷分散といった「アプリにやらせると割に合わない仕事」を肩代わりし、遅い外界からアプリを隔離する役割を担う。</p></details>
+          <details class="check"><summary>Q2. Rackが標準化した「約束事」とは何で、それによって何が疎結合になったか？</summary><p>Rackアプリとは「<code>call(env)</code>というメソッドを持ち、環境ハッシュ<code>env</code>を受け取って<code>[status, headers, body]</code>の3要素配列を返すオブジェクト」という一つの規約。この共通インターフェースにより、サーバ（Puma/Unicorn等）とフレームワーク（Rails/Sinatra等）が互いの実装を知らずに組み替えられる。個別対応のN×Mの組み合わせがN＋Mに畳まれた。</p></details>
+          <details class="check"><summary>Q3. Rackミドルウェアはどういう構造で、何を可能にするか？</summary><p>内側のRackアプリを抱え、<code>env</code>を受けてから内側を<code>call</code>し、返ってきた<code>[status, headers, body]</code>を加工して返すRackアプリ。入口（行き）と出口（帰り）の両方に割り込める。これを玉ねぎ状に重ねることで、ログ・認証・セッション・例外処理といった横断的関心事を、アプリ本体から切り離して層として差し込める。</p></details>
+        </div>
       </section>
 
       <section class="chapter" id="ch14">
