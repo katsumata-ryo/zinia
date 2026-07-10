@@ -1589,7 +1589,7 @@ COMMIT;                                        -- ここで初めて確定。落
   -- capacity 未満なら INSERT
   INSERT INTO registrations (user_id, event_id, status) VALUES (99, 42, 'confirmed');
 COMMIT;</code></pre>
-        <p>Railsなら<code>Event.lock.find(42)</code>や<code>event.with_lock do ... end</code>がこの<code>FOR UPDATE</code>を発行する。ロックはCOMM/ROLLBACKで解放される。<strong>「イベント行を先に握った者だけが定員を数えてINSERTできる」</strong>ので、二人目は一人目のCOMMITを待ってから最新の30件を見て弾かれる。</p>
+        <p>Railsなら<code>Event.lock.find(42)</code>や<code>event.with_lock do ... end</code>がこの<code>FOR UPDATE</code>を発行する。ロックはCOMMIT/ROLLBACKで解放される。<strong>「イベント行を先に握った者だけが定員を数えてINSERTできる」</strong>ので、二人目は一人目のCOMMITを待ってから最新の30件を見て弾かれる。</p>
         <p><strong>(2) 楽観ロック。</strong> ロックで待たせる代わりに、更新時に「読んだときからバージョンが変わっていないか」を確かめる。Railsの<code>lock_version</code>カラムがこれで、<code>UPDATE ... WHERE id=? AND lock_version=?</code>が0行更新なら「誰かに先を越された」と判断して<code>StaleObjectError</code>を投げる。衝突が稀なら待たせない分こちらが速い。<strong>悲観＝先に握る／楽観＝後で確かめる</strong>、衝突頻度で選ぶ。</p>
         <aside class="eng-note"><span class="tag">補足</span>
         定員のような一意な制約は、アプリのロジックだけでなく<strong>DBの制約でも二重に守る</strong>のが堅い。Zephyrの<code>registrations</code>には<code>UNIQUE(user_id, event_id)</code>があった（<a href="#ch15">第15章</a>）。これがあれば「同じ人が二重申込」はロックの有無に関わらずDBが弾く。分離レベルやロックで守りきれない不変条件は、<strong>最後の砦としての制約</strong>（<a href="#ch22">第22章</a>）に預けるのが定石だ。アプリ層のチェックは競合の隙間（TOCTOU）で漏れることがある、と覚えておく。</aside>
