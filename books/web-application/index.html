@@ -1439,7 +1439,92 @@ FROM reviews;</code></pre>
       <section class="chapter" id="ch18">
         <h2>第18章　インデックスとクエリプラン</h2>
         <div class="chap-hole"><span class="label">この章で埋まる穴</span>B-treeの構造、<code>EXPLAIN</code>の読み方、複合インデックスの「左端一致」がなぜ効くか。第6章の計算量の直観がここで回収されます。「とりあえずインデックスを貼る」から「効くインデックスを設計する」へ。</div>
-        <p class="placeholder">（執筆予定）</p>
+
+        <p><a href="#ch6">第6章</a>で「線形探索O(n)は件数が増えると効かない、木構造ならO(log n)で探せる」という直観を仕込み、「DBが100万件から一瞬で行を見つけられるのはB-treeという平衡木のおかげ」と予告した。<strong>その回収がこの章だ。</strong> インデックスは「とりあえず貼れば速くなるおまじない」ではない。<strong>なぜ効くのか、そして<em>なぜ効かないことがあるのか</em>を、B-treeの構造と<code>EXPLAIN</code>の出力から理解する</strong>のがゴールだ。ここが分かると、複合インデックスの「左端一致」という一見不可解なルールも、N+1を直したあとに残る遅さ（<a href="#ch20">第20章</a>）の正体も、自分で診断できるようになる。</p>
+
+        <h3>インデックスがなければ、DBは全部読む</h3>
+        <p>まず出発点。<code>registrations</code>に100万行あるとして、こう問う。</p>
+        <pre><code class="lang-sql">SELECT * FROM registrations WHERE event_id = 42;</code></pre>
+        <p><code>event_id</code>にインデックスが無ければ、DBは<strong>1行目から100万行目まで全部読んで</strong><code>event_id = 42</code>かを一件ずつ確かめる。これが<strong>シーケンシャルスキャン（seq scan、フルスキャン）</strong>で、計算量はO(n)。まさに<a href="#ch6">第6章</a>の配列<code>include?</code>と同じ構図だ。件数が10倍になれば時間も概ね10倍。本番の百万件で固まるコードの匂いがここにある。</p>
+
+        <h3>B-tree — なぜO(log n)で見つかるか</h3>
+        <p>インデックスとは、<strong>ある列の値をソートして保持し、目的の値へ最短で辿り着ける補助構造</strong>だ。ほとんどのRDBのデフォルトは<strong>B-tree（正確にはB+tree）</strong>という平衡木を使う。イメージはこうだ。</p>
+        <div class="figure">
+          <pre><code class="lang-sql">          [ 40 | 80 ]                 ← 根（ルート）
+         /     |      \
+   [..30] [40..70] [80..]            ← 枝（各ノードが範囲を担当）
+     |       |        |
+  リーフ   リーフ    リーフ          ← 葉に実データへのポインタ（値はソート済み）</code></pre>
+          <div class="cap">B+treeの模式図。各ノードで範囲を絞りながら降りていく。葉はソート済みで横に繋がっている。</div>
+        </div>
+        <p>探索は根から始まる。「42を探せ」——根で「40〜80の枝だ」と一段で絞り、次のノードでさらに絞り、数ホップで葉に着く。各ノードが子を多数持つ（多分木）ので<strong>木の高さは低く、100万行でも高さは3〜4段程度</strong>。だから読むページ数がO(log n)で収まる。これが「100万件から一瞬」の正体だ。<a href="#ch6">第6章</a>の二分探索が「毎回半分に絞る」ならB-treeは「毎回<em>数十分の一</em>に絞る」——原理は同じ、分岐数が大きいだけだ。</p>
+        <p>B-treeがこの形であることから、<strong>インデックスが効く操作/効かない操作</strong>が決まる。ソートされた木を辿る構造なので——</p>
+        <ul>
+          <li><strong>効く</strong>：等価（<code>=</code>）、範囲（<code>&gt;</code> <code>&lt;</code> <code>BETWEEN</code>）、前方一致（<code>LIKE 'Rails%'</code>）、そして<strong>ソート（<code>ORDER BY</code>）</strong>。葉がソート済みなので並べ替えをスキップできる。</li>
+          <li><strong>効かない</strong>：中間一致（<code>LIKE '%Rails%'</code>）——先頭が分からないと木を辿れない。列を関数で加工した条件（<code>WHERE lower(email) = ...</code>）——加工後の値は木に無い。</li>
+        </ul>
+        <aside class="mongo-note"><span class="tag">MongoDB脳の翻訳</span>
+        MongoDBのインデックスも既定はB-treeで、この章の直観はほぼそのまま通用する。<code>db.collection.find().explain()</code>で<code>COLLSCAN</code>（＝seq scan）か<code>IXSCAN</code>（＝index scan）かを見るのは、SQLの<code>EXPLAIN</code>とまったく同じ営みだ。複合インデックスの「左端一致（prefix）」ルールもMongoに同じくある。<strong>違うのは、RDBは外部キーや一意制約に絡めてインデックス設計を考えることが多い点</strong>くらいで、B-treeの効き方の原理は共通の財産だ。だから本章で一度腹落ちさせれば、両方で使える。</aside>
+
+        <h3>EXPLAIN — DBの「作戦」を読む</h3>
+        <p>あるクエリでインデックスが使われたか、フルスキャンに落ちたかは、想像ではなく<strong><code>EXPLAIN</code>で確かめる</strong>。PostgreSQLなら実際に実行して計測まで見る<code>EXPLAIN ANALYZE</code>が実務では有用だ。</p>
+        <pre><code class="lang-sql">EXPLAIN ANALYZE
+SELECT * FROM registrations WHERE event_id = 42;</code></pre>
+        <p>インデックスが無いときの出力（要点だけ）はこうなる。</p>
+        <pre><code class="lang-sql">Seq Scan on registrations  (cost=0.00..18334.00 rows=95 width=..)
+  Filter: (event_id = 42)
+  Rows Removed by Filter: 999905
+  ...  actual time=0.5..120.3</code></pre>
+        <p><strong><code>Seq Scan</code></strong>という語が「全行読んだ」印。<code>Rows Removed by Filter: 999905</code>が「99万行を読んで捨てた」惨状を物語る。ここで<code>event_id</code>にインデックスを貼ると——</p>
+        <pre><code class="lang-sql">CREATE INDEX idx_registrations_event_id ON registrations(event_id);</code></pre>
+        <pre><code class="lang-sql">Index Scan using idx_registrations_event_id on registrations
+  (cost=0.42..8.51 rows=95 width=..)
+  Index Cond: (event_id = 42)
+  ...  actual time=0.03..0.15</code></pre>
+        <p><strong><code>Index Scan</code></strong>に変わり、<code>cost</code>も実測時間も桁違いに下がった。<code>EXPLAIN</code>を読むときに最初に見るべきは以下だ。</p>
+        <div class="scroll-x"><table>
+          <thead><tr><th>見る項目</th><th>意味</th></tr></thead>
+          <tbody>
+            <tr><td><code>Seq Scan</code> / <code>Index Scan</code></td><td>全走査か、インデックス経由か（まずここ）</td></tr>
+            <tr><td><code>cost=開始..総額</code></td><td>DBが見積もった相対コスト（実時間ではなく比較用の単位）</td></tr>
+            <tr><td><code>rows</code></td><td>返る行数の<strong>見積もり</strong>。実測(<code>actual</code>)と大きくズレたら統計が古い疑い</td></tr>
+            <tr><td><code>Rows Removed by Filter</code></td><td>読んで捨てた行数。大きいほど無駄</td></tr>
+          </tbody>
+        </table></div>
+        <aside class="eng-note"><span class="tag">補足</span>
+        <strong>インデックスがあれば必ず使われる、わけではない</strong>。DBのオプティマイザは統計情報（テーブルの行数や値の分布）を見て「フルスキャンとインデックス、どちらが安いか」をコストで判断する。テーブルが小さい、または<code>event_id = 42</code>が全体の大半にヒットするような場合、<strong>あえてフルスキャンを選ぶ方が速い</strong>こともある（ランダムアクセスの積み重ねより順次読みが速い局面）。だから「インデックスを貼ったのに使われない」は必ずしもバグではなく、<code>EXPLAIN</code>とデータ分布をセットで見て初めて判断できる。</aside>
+
+        <h3>複合インデックスと「左端一致」— なぜ順序が命なのか</h3>
+        <p><a href="#ch15">第15章</a>のPERSONAS想定どおり、Zephyrで頻出するのは「あるイベントの<strong>確定</strong>申込」だ。</p>
+        <pre><code class="lang-sql">SELECT * FROM registrations WHERE event_id = 42 AND status = 'confirmed';</code></pre>
+        <p>二列を使うので<strong>複合インデックス</strong>を貼る。ここで<strong>列の順序が決定的に重要</strong>になる。</p>
+        <pre><code class="lang-sql">CREATE INDEX idx_reg_event_status ON registrations(event_id, status);</code></pre>
+        <p>複合インデックスのB-treeは<strong>「まず<code>event_id</code>でソートし、同じ<code>event_id</code>の中で<code>status</code>でソート」</strong>という<em>辞書順</em>で並ぶ。電話帳が「姓→名」で並ぶのと同じだ。この構造から、<strong>左端一致（leftmost prefix）</strong>という効き方のルールが導かれる。</p>
+        <div class="scroll-x"><table>
+          <thead><tr><th>クエリの条件</th><th><code>(event_id, status)</code>は効くか</th><th>理由</th></tr></thead>
+          <tbody>
+            <tr><td><code>event_id = 42 AND status = 'confirmed'</code></td><td><strong>◎ 完全に効く</strong></td><td>左端から順に絞れる</td></tr>
+            <tr><td><code>event_id = 42</code></td><td><strong>○ 効く</strong></td><td>左端だけでも辿れる（範囲で取れる）</td></tr>
+            <tr><td><code>status = 'confirmed'</code>（event_id指定なし）</td><td><strong>× 効かない</strong></td><td>電話帳で名だけ知って姓を知らないのと同じ。全体を見るしかない</td></tr>
+            <tr><td><code>event_id &gt; 40 AND status = 'confirmed'</code></td><td><strong>△ 中途半端</strong></td><td>範囲で使い切ると、その先の<code>status</code>はインデックスで絞れない</td></tr>
+          </tbody>
+        </table></div>
+        <p>肝は<strong>「左の列から連続して使える範囲までしかインデックスは効かない」</strong>という点だ。<code>status</code>単独の検索も速くしたいなら、それ用に別のインデックスが要る。逆に言えば、複合インデックスの列順は<strong>「等価で絞る列を左に、範囲で絞る列を右に」「単独でも引きたい列を左に」</strong>という設計判断であって、適当に並べるものではない。「とりあえず両方にインデックス」ではなく「クエリの形に合わせて順序を決める」——これが<a href="#ch22">第22章</a>のスキーマ設計に直結する感覚だ。</p>
+
+        <h3>カバリングインデックス — テーブルを読まずに済ませる</h3>
+        <p>もう一段。通常のインデックスは「葉に着いたら、そこのポインタで<strong>本体テーブルの行を読みに行く</strong>」（この二度手間をテーブルアクセスと呼ぶ）。だが、<strong>クエリが必要とする列が全部インデックスの中に載っていれば、本体を読みに行く必要がない</strong>。これを<strong>カバリングインデックス</strong>（インデックスオンリースキャン）という。</p>
+        <pre><code class="lang-sql">-- このクエリは event_id と status しか要らない
+SELECT status FROM registrations WHERE event_id = 42;
+-- idx_reg_event_status(event_id, status) はこの2列を含むので
+-- 本体テーブルを読まずインデックスだけで完結する → Index Only Scan</code></pre>
+        <p><code>EXPLAIN</code>で<code>Index Only Scan</code>と出れば成功だ。よく参照する列をインデックスに含めておく（PostgreSQLなら<code>INCLUDE</code>句もある）と、テーブルアクセスを省いて更に速くなる。ただし<strong>インデックスは書き込みのたびに更新が必要な冗長構造</strong>だ。列を盛るほど、そして本数を増やすほど、<code>INSERT</code>/<code>UPDATE</code>が重くなり、ディスクも食う。<strong>インデックスは「読みを速くする代わりに書きを遅くする」トレードオフ</strong>——<a href="#ch17">第17章</a>の非正規化と同じ、読みと書きの綱引きがここにもある。「効くインデックスを最小限」が設計の勘所だ。</p>
+        <p>これで第3部前半——モデル・SQL・正規化・インデックスという「静的な構造」の話は揃った。ここから先は<strong>動きの話</strong>だ。複数の処理が同時にこの構造を触るとどうなるか（<a href="#ch19">第19章</a> トランザクション）、ActiveRecordがこの構造にどうアクセスして時にN+1を撒くか（<a href="#ch20">第20章</a>・<a href="#ch21">第21章</a>）、そしてこれらの制約とインデックスを<strong>どう設計として作り込むか</strong>（<a href="#ch22">第22章</a>）。この章で得た「EXPLAINで確かめる」姿勢が、その全部の診断道具になる。</p>
+
+        <div class="check-wrap"><h3>理解度チェック</h3>
+          <details class="check"><summary>Q1. B-treeインデックスがO(log n)で目的の行を見つけられるのはなぜか。第6章のどの直観と繋がるか？</summary><p>B-tree(B+tree)は平衡した多分木で、各ノードが値の範囲を担当し多数の子を持つため木の高さが低い（100万行でも3〜4段）。根から範囲を絞りながら数ホップで葉（ソート済み・実データへのポインタ）に着くので、読むページ数がO(log n)で済む。第6章の二分探索「毎回半分に絞る」と同じ原理で、分岐数が大きく「毎回数十分の一に絞る」だけの違い。インデックスの無い列はseq scan（O(n)、配列の<code>include?</code>と同じ）になる。</p></details>
+          <details class="check"><summary>Q2. EXPLAINで最初に見るべき点は何か。「インデックスを貼ったのに使われない」は必ずバグか？</summary><p>まず<code>Seq Scan</code>か<code>Index Scan</code>か（全走査か経由か）を見る。次に<code>rows</code>見積もりと<code>actual</code>のズレ、<code>Rows Removed by Filter</code>の大きさを見る。インデックスを貼っても使われないのは必ずしもバグではない——オプティマイザは統計を見てフルスキャンとインデックスのコストを比較し、テーブルが小さい／条件が大半にヒットする等の場合はあえてseq scanを選ぶ（順次読みの方が速い局面がある）。EXPLAINとデータ分布をセットで判断する。</p></details>
+          <details class="check"><summary>Q3. 複合インデックス<code>(event_id, status)</code>で、<code>status</code>単独の検索が効かないのはなぜか？</summary><p>複合インデックスは「event_idでソート、同じevent_id内でstatusでソート」という辞書順（電話帳の姓→名と同じ）で並ぶため、左端の列から連続して使える範囲までしか効かない（左端一致／leftmost prefix）。<code>status</code>だけ指定してevent_idを指定しないのは「名だけ知って姓を知らない」状態で、木を辿る起点が定まらず全体を見るしかない。status単独でも速くしたいなら別のインデックスが必要。列順は「等価で絞る列や単独でも引く列を左」に設計する。</p></details>
+        </div>
       </section>
 
       <section class="chapter" id="ch19">
