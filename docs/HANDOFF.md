@@ -46,14 +46,18 @@ zinia/
 5. 完了ごとに Issue クローズ → 全部終わったら検証（リンク・タグ整合・placeholder残）→ commit & push
 6. コミットは日本語、`Co-Authored-By: Claude <モデル名> <noreply@anthropic.com>` を付与
 
-## 次にやること: 『Webアプリケーションを支えるもの』
+## 完了したこと: 『Webアプリケーションを支えるもの』
 
-- 指示書: `docs/proposals/web-application.md`（**作成済み・全7部32章構成**）
-- ユーザーの意向: **Opusに切り替えてから実行**する
-- 配置: `books/web-application/index.html` + `docs/books/web-application/`
-- 本棚ポータル `index.html` に「準備中」カードとして掲載済み → 完成したら「公開中」に更新すること
-- 指示書の要点: HOWでなくWHY / MongoDB経験者向けRDB対比コラム必須（特に第3部DB編は厚く4,000〜6,000字）/
-  各章冒頭「この章で埋まる穴」/ 理解度チェック3問 / シンタックスハイライトは軽量インラインJS
+- 指示書: `docs/proposals/web-application.md`（全7部32章構成）
+- 成果物: `books/web-application/index.html`（単一HTML・全32章）+ `docs/books/web-application/`（PERSONAS.md, RESEARCH.md）
+- GitHub Issues: Epic #11 + サブ #12〜#21 すべてクローズ済み
+- 題材は架空Railsアプリ「Zephyr」（学習イベント管理）で章横断のコード例を統一
+- 品質検証済み: 内部リンク切れゼロ / タグ整合（section開1差はHTMLコメント内の記述例で無害）/
+  localStorage不使用（ヒットは説明文とコメントのみ）/ プレースホルダ残ゼロ /
+  理解度チェック35セット / MongoDB対比コラム27本（第3部DB編に集中）
+- HOWでなくWHYを貫き、部をまたいで伏線を張って回収する構成
+- 本棚ポータル `index.html` は「公開中」に更新済み
+- **残TODO（軽微）**: 未レビュー（前作はFableでレビュー実施）。広く共有する前に技術記述の目視確認が安心
 
 ## その他の注意
 
