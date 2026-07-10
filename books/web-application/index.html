@@ -1622,7 +1622,76 @@ UPDATE ... WHERE id = 2;   →    T1はid=2を待つ（T2が握っている）
       <section class="chapter" id="ch20">
         <h2>第20章　コネクションプールとN+1</h2>
         <div class="chap-hole"><span class="label">この章で埋まる穴</span>DBコネクションが有限資源であること、プールの意味、そしてN+1問題が<strong>ActiveRecordの下で</strong>どう発生するか。Zephyrのイベント一覧で実際にN+1を起こし、SQLログで目撃してから直します。</div>
-        <p class="placeholder">（執筆予定）</p>
+
+        <p><a href="#ch14">第14章</a>の最後で宿題を一つ残した。Pumaの<code>workers × threads</code>の分だけ同時にDBへ接続しにいく、その本数を<strong>DBコネクションプール</strong>が支えられないとスレッドが接続待ちで詰まる——「この繋がりは第20章で回収する」と書いた。<strong>その回収がこの章の前半だ。</strong> そして後半は、ActiveRecordを使う全エンジニアが一度は本番で踏む地雷、<strong>N+1問題</strong>を扱う。この二つは無関係に見えて、根っこは同じ一つの事実に繋がっている——<strong>DBへの接続と問い合わせは「有限で高価な資源」だ</strong>。ORMはその高価さを覆い隠すのが仕事なので、あなたは<code>events.each { |e| e.organizer.name }</code>と書くだけで済む。だがその一行の下で、接続が枯渇したりクエリが100本走ったりしている。この章は、その隠された下層を<strong>SQLログで直接目撃</strong>し、なぜ起きるか・どう直すかを腹落ちさせる。</p>
+
+        <h3>DBコネクションはなぜ「有限で高価」なのか</h3>
+        <p>アプリがDBに問い合わせるには、まず<strong>接続（コネクション）</strong>を張る必要がある。この確立は見た目より重い。TCPの3wayハンドシェイク（<a href="#ch8">第8章</a>）、場合によってはTLS、そして認証とセッション確立——<strong>1リクエストごとに毎回これをやっていては、問い合わせ本体より接続コストの方が高くつく</strong>。さらにDB側にも事情がある。PostgreSQLは<strong>接続1本ごとにサーバプロセス（またはバックエンド）を割り当てる</strong>ため、接続はメモリを食う重い存在で、<code>max_connections</code>という上限がある（デフォルトは百数十程度）。<strong>「接続は無限に張れるものではなく、DBが受けられる本数には天井がある」</strong>——これが全ての出発点だ。</p>
+
+        <h3>コネクションプール — 接続を「使い回す」</h3>
+        <p>解決策はシンプルだ。<strong>接続を毎回張って捨てるのをやめ、あらかじめ数本張っておいて使い回す。</strong> これがコネクションプールだ。処理が必要になったらプールから1本借り、終わったら返す（切断はしない）。ActiveRecordはこのプールを内蔵していて、<code>config/database.yml</code>の<code>pool</code>がその本数だ。</p>
+        <pre><code class="lang-ruby"># config/database.yml
+production:
+  adapter: postgresql
+  pool: &lt;%= ENV.fetch("RAILS_MAX_THREADS", 5) %&gt;   # このプロセスが持つ接続の最大本数</code></pre>
+        <p>ここで<a href="#ch14">第14章</a>の宿題が回収される。ActiveRecordのプールは<strong>プロセス（Pumaワーカー）ごとに1つ</strong>で、その中の接続を<strong>そのプロセス内のスレッドたちが奪い合う</strong>。だから鉄則はこうだ。</p>
+        <div class="figure">
+          <pre><code class="lang-ruby"># 1プロセスが同時に使いうる接続数 = そのプロセスのスレッド数
+# よって：
+pool 本数  ≧  Puma の threads 本数
+
+# 例: threads 5, 5 なら 1ワーカーが最大5スレッド → pool: 5 が最低ライン
+# DB全体の接続消費 = workers数 × pool本数 × (複数サーバなら)サーバ台数
+#                  これが DB の max_connections を超えてはいけない</code></pre>
+          <div class="cap">Pumaのスレッド数とActiveRecordのpool、そしてDBのmax_connectionsは一本の鎖で繋がっている。</div>
+        </div>
+        <p><strong>pool &lt; threads だとどうなるか。</strong> スレッド数の方が接続本数より多いので、6本目のスレッドが処理を始めようとしても借りる接続がない。このスレッドは<strong>プールが空くのを待つ</strong>——<code>ActiveRecord::ConnectionTimeoutError</code>（<code>could not obtain a connection from the pool within 5 seconds</code>）だ。「スレッドを増やしたのに速くならない、むしろタイムアウトが増えた」の正体はこれで、<a href="#ch19">第19章</a>のロック待ちとは別種の“待ち”がここにある。逆に<strong>pool を無闇に大きくしても、全プロセス合計が<code>max_connections</code>を超えればDB側が新規接続を拒否する</strong>。Pumaのスレッド数・pool・DBの上限を<strong>セットで</strong>設計する、という<a href="#ch14">第14章</a>の主張が、ここで具体的な不等式になった。</p>
+        <aside class="eng-note"><span class="tag">補足</span>
+        接続数が本当に足りない、あるいはサーバ台数が多くて<code>workers × pool × 台数</code>が<code>max_connections</code>を圧迫する場合、<strong>PgBouncerのような外部コネクションプーラ</strong>をアプリとDBの間に挟む。アプリからの多数の接続を、DBへの少数の物理接続に集約する仕組みだ。サーバレス（Cloud Runのようにインスタンスが増減する環境）ではインスタンス数×poolが読めず接続爆発を起こしやすいので、この手のプーラがほぼ必須になる。「アプリ側プール」と「DB前段プーラ」は階層が違う別物、と押さえておく。</aside>
+
+        <h3>N+1問題 — 一覧を出すだけでクエリが100本走る</h3>
+        <p>ここからが本章の主役だ。Zephyrで<strong>イベント一覧に、各イベントの主催者名を出す</strong>——ありふれた画面を作る。素直に書くとこうなる。</p>
+        <pre><code class="lang-ruby"># コントローラ
+@events = Event.limit(20)
+
+# ビュー（ERB）
+@events.each do |event|
+  puts "#{event.title} / 主催: #{event.organizer.name}"
+end</code></pre>
+        <p>動く。表示も正しい。だがログを見ると、20件のイベントを出すのに<strong>クエリが21本</strong>走っている。</p>
+        <pre><code class="lang-sql">-- (1) まずイベント20件を取る一覧クエリ … これが「1」
+SELECT * FROM events LIMIT 20;
+-- (2) 以下、ループのたびに organizer を1件ずつ引く … これが「N」（20回）
+SELECT * FROM users WHERE id = 7  LIMIT 1;
+SELECT * FROM users WHERE id = 3  LIMIT 1;
+SELECT * FROM users WHERE id = 12 LIMIT 1;
+-- … あと17本、同じ形のクエリが続く …</code></pre>
+        <p>これが<strong>N+1問題</strong>だ。<strong>一覧を取る1本のクエリ＋各行の関連を取るN本のクエリ</strong>で、合計N+1本になる。20件なら21本、1000件なら1001本。表示件数に比例してクエリ数が増えるので、開発環境の数件では気づかず、<strong>本番のデータ量で突然遅くなる</strong>——最も典型的な「動くけど遅い」バグだ。</p>
+        <p>なぜ起きるのか。犯人は<a href="#ch21">第21章</a>で詳しく暴くActiveRecordの<strong>遅延読み込み（lazy loading）</strong>だ。<code>event.organizer</code>は、<strong>その属性に初めてアクセスした瞬間に</strong>「あ、このイベントの主催者はまだ読んでないな」と<em>その場で</em>SQLを1本発行する。親切な自動読み込みなのだが、それをループの中でN回やると、N本のクエリになる。<strong>ORMが「関連は必要になったら取ってくる」という便利さを提供しているせいで、必要になる回数だけクエリが出る</strong>——これがN+1の本質だ。</p>
+
+        <h3>目撃する — ログとBulletで検出する</h3>
+        <p>N+1は「気づけるか」が全てだ。まず<strong>開発ログの生SQLを読む習慣</strong>をつける。同じ形の<code>SELECT ... WHERE id = ?</code>がずらりと並んでいたら、ほぼN+1だ。加えて、<code>bullet</code> gemを入れると「ここでN+1が起きている、<code>includes</code>を使え」と実行時に警告してくれる。<strong>まず現象をログで自分の目で見て、それから道具で自動検出に格上げする</strong>——<a href="#ch18">第18章</a>で<code>EXPLAIN</code>を「想像でなく確かめる」道具にしたのと同じ姿勢だ。</p>
+
+        <h3>直す — まとめて取る（eager loading）</h3>
+        <p>直し方の原理は明快だ。<strong>ループで1件ずつ取るのをやめ、必要な関連を「まとめて」先に取っておく。</strong> ActiveRecordでは<code>includes</code>（や<code>preload</code>／<code>eager_load</code>）を使う。</p>
+        <pre><code class="lang-ruby"># N+1を解消：organizer を先読みするよう指示
+@events = Event.includes(:organizer).limit(20)</code></pre>
+        <p>これでクエリは<strong>21本から2本</strong>になる。</p>
+        <pre><code class="lang-sql">-- (1) イベント20件
+SELECT * FROM events LIMIT 20;
+-- (2) 20件が参照する organizer を、IN で「一括」で取る（1本だけ！）
+SELECT * FROM users WHERE id IN (7, 3, 12, 5, ...);</code></pre>
+        <p>ループの中で20回個別に引いていた<code>users</code>を、<strong><code>WHERE id IN (...)</code>で1本にまとめた</strong>。N本が1本に畳まれ、全体で2本になる。これが<code>preload</code>方式（別クエリでIN取得）で、状況によっては<code>eager_load</code>方式（LEFT OUTER JOINで1本にする）が選ばれることもある。<strong>この<code>includes</code>/<code>preload</code>/<code>eager_load</code>が実際にどんなSQLを出し分けるのか、なぜ「参照条件があると挙動が変わる」のかは、次章の主題だ。</strong> この章で押さえるべきは、原理のレベル——<strong>「N回の個別クエリを、まとめた少数のクエリに畳む」</strong>——であり、それがコネクション（有限資源）への負荷もクエリ本数も劇的に減らす、という一点だ。</p>
+        <aside class="eng-note"><span class="tag">補足</span>
+        N+1の逆に、<strong>「JOINで一気に取ればいつでも速い」わけでもない</strong>。<code>eager_load</code>のLEFT JOINは、多対多や<code>has_many</code>を絡めると結果行が<strong>掛け算で膨らむ</strong>（イベント20件×各10申込＝200行が返り、eventsの列が重複してネットワークとメモリを食う）。だからActiveRecordは<code>has_many</code>の先読みに<strong>JOINでなくIN取得(preload)を既定で選ぶ</strong>ことが多い。「N+1は悪、JOINは善」という単純な二分法ではなく、<strong>クエリ本数と1本あたりの重さのトレードオフ</strong>で、<a href="#ch18">第18章</a>のEXPLAINを使って実測で選ぶ——これが正しい態度だ。</aside>
+
+        <p>コネクションプールで「接続は有限資源」を、N+1で「クエリ発行も有限資源への負荷」を見た。どちらもActiveRecordが親切に隠していた下層だ。次章では、その隠蔽の本体に踏み込む——<strong>あなたが毎日書いているARのメソッドが、実際にどんなSQLを吐いているのかを一つずつ暴く。</strong></p>
+
+        <div class="check-wrap"><h3>理解度チェック</h3>
+          <details class="check"><summary>Q1. なぜコネクションプールが必要か。Pumaのthreads・ActiveRecordのpool・DBのmax_connectionsはどう関係するか？</summary><p>DB接続の確立はTCP/TLS/認証で高価な上、PostgreSQLは接続ごとにプロセスを割り当てるためメモリを食い<code>max_connections</code>という上限がある。毎回張り直すのは無駄なので、数本を張って使い回すのがプール。ActiveRecordのプールはプロセス（Pumaワーカー）ごとに1つで、その中の接続をプロセス内のスレッドが奪い合う。よって<code>pool ≧ threads</code>でないと6本目のスレッドが接続待ち（ConnectionTimeoutError）になる。一方DB全体の消費は<code>workers × pool × サーバ台数</code>で、これが<code>max_connections</code>を超えてはいけない。三者はセットで設計する。</p></details>
+          <details class="check"><summary>Q2. N+1問題とは何か。<code>event.organizer</code>のような書き方でなぜクエリがN本増えるのか？</summary><p>一覧を取る1本のクエリ＋各行の関連を1件ずつ取るN本のクエリで合計N+1本になる現象。原因はActiveRecordの遅延読み込み（lazy loading）で、<code>event.organizer</code>はその属性に初めてアクセスした瞬間にその場でSQLを1本発行する。これをループでN回やるとN本になる。開発環境の少件数では気づかず本番のデータ量で突然遅くなる典型的なバグ。ログに同形の<code>WHERE id = ?</code>が並ぶ／Bullet gemで検出できる。</p></details>
+          <details class="check"><summary>Q3. <code>includes(:organizer)</code>でN+1が解消されるのはなぜか。JOINが常に最善でないのはなぜか？</summary><p><code>includes</code>は関連を先読みし、ループで20回個別に引いていた<code>users</code>を<code>WHERE id IN (...)</code>の1本にまとめる（preload方式）。N本が1本に畳まれ全体2本になる。ただしeager_load（LEFT OUTER JOIN）方式は<code>has_many</code>を絡めると結果行が掛け算で膨らみ（20件×各10申込＝200行、親の列が重複）ネットワーク・メモリを食う。だから「N+1は悪、JOINは善」ではなく、クエリ本数と1本の重さのトレードオフで、EXPLAINを使い実測で選ぶ。</p></details>
+        </div>
       </section>
 
       <section class="chapter" id="ch21">
