@@ -1123,7 +1123,106 @@ threads 5, 5                                       # 各プロセス内のスレ
       <section class="chapter" id="ch15">
         <h2>第15章　リレーショナルモデルの考え方</h2>
         <div class="chap-hole"><span class="label">この章で埋まる穴</span>「なぜテーブルなのか」を集合と関係の理論から。ドキュメント指向（入れ子のJSON）とリレーショナル（フラットな集合＋関係）の<strong>思想の違い</strong>を丁寧に対比し、RDBが何を最適化しているのかを腹落ちさせる、第3部の入り口。</div>
-        <p class="placeholder">（執筆予定）</p>
+
+        <p>ここからが本書の背骨だ。<a href="#ch14">第14章</a>の最後で「Railsの窓口が待たされる最大の相手はデータベースだ」と書いた。その相手を、これから8章かけて<strong>下から</strong>解体していく。最初の問いはいちばん素朴なやつだ——<strong>なぜデータを「テーブル」という格子に入れるのか？</strong> MongoDBを長く触ってきた人なら、この問い自体が奇妙に感じるはずだ。データは実物に合わせて入れ子のドキュメントで持てばいいじゃないか、イベントに参加者もレビューも配列で<strong>埋め込め</strong>ばいいじゃないか、と。この章は、その「埋め込む」感覚と、RDBの「分けて関係で結ぶ」感覚が<strong>そもそも何を最適化した設計なのか</strong>を並べて、思想の違いを腹落ちさせる。SQLの書き方（<a href="#ch16">第16章</a>）や正規化（<a href="#ch17">第17章</a>）は、この土台の上にしか立たない。</p>
+
+        <h3>リレーショナルモデルは「集合」の理論である</h3>
+        <p>まず名前の誤解を解く。「リレーショナル（relational）」の<strong>relation（関係）</strong>は、テーブル同士を外部キーで結ぶ「リレーション」のことだと思われがちだが、<strong>違う</strong>。もともとの意味での relation とは、<strong>一枚のテーブルそのもの</strong>を指す数学用語だ。1970年にE.F.コッドが提唱したリレーショナルモデルは、集合論と述語論理を土台にしている。ざっくり訳すと、こうだ。</p>
+        <ul>
+          <li><strong>関係（relation）＝テーブル</strong>：ある型を持つ「行」の<strong>集合</strong>。</li>
+          <li><strong>タプル（tuple）＝行</strong>：属性の組。<code>(id: 1, name: "佐藤", department: "開発")</code>のような一件。</li>
+          <li><strong>属性（attribute）＝列</strong>：それぞれが定義域（取りうる値の型）を持つ。</li>
+        </ul>
+        <p>ここで肝心なのは、テーブルが<strong>「行の集合」</strong>だという点だ。集合だから、数学的には<strong>行に順序はない</strong>し、<strong>まったく同じ行が二つ存在してはいけない</strong>（集合は重複を持たない）。あなたが<code>SELECT</code>の結果順を<code>ORDER BY</code>なしには保証できないのも、主キーで一意性を守るのも、この「集合」という出自から自然に出てくる帰結だ。<strong>SQLはこの集合に対する演算</strong>——和・積・差・射影・結合——を宣言的に書く言語であり、「どう取ってくるか（HOW）」ではなく「どんな集合が欲しいか（WHAT）」を書く。ループを書かずに<code>WHERE</code>一発で全件を絞れるのは、根っこが集合演算だからだ。</p>
+        <aside class="eng-note"><span class="tag">補足</span>
+        「宣言的」という言葉がピンと来なければ、<a href="#ch6">第6章</a>で配列を<code>each</code>で回して<code>if</code>で選り分けた処理を思い出すとよい。あれは「一件ずつ見て条件に合うものを集める」という<strong>手続き</strong>だ。SQLの<code>WHERE</code>は「条件を満たす行の集合」を<strong>結果として宣言</strong>するだけで、走査の順序も方法もDBのオプティマイザに委ねる。この「やり方を明け渡す」ことが、後で出てくるインデックスやクエリプラン（<a href="#ch18">第18章</a>）が効く前提になっている。</aside>
+
+        <h3>ドキュメント指向は「木」、リレーショナルは「集合の分解」</h3>
+        <p>MongoDBのドキュメントは、一件のデータを<strong>入れ子のJSON（＝木構造）</strong>としてまるごと1単位で持つ。Zephyrのイベントをドキュメントで表すなら、こうなるだろう。</p>
+        <pre><code class="lang-js">// MongoDBでの「埋め込み」設計イメージ
+{
+  _id: "evt_42",
+  title: "Rails輪読会 #3",
+  starts_at: "2026-08-01T19:00:00Z",
+  capacity: 30,
+  organizer: { _id: "usr_7", name: "田中", department: "開発" },
+  tags: ["Ruby", "初心者歓迎"],
+  registrations: [
+    { user: { _id: "usr_9", name: "鈴木" }, status: "confirmed" },
+    { user: { _id: "usr_3", name: "佐藤" }, status: "applied" }
+  ]
+}</code></pre>
+        <p>この設計の強みは明快だ。<strong>「イベント詳細画面を出す」という一つの読みが、たった一回の取得で完結する</strong>。参加者もタグも主催者も、木を丸ごと引けば全部そこにある。JOINもいらない。画面の形とデータの形が一致している。</p>
+        <p>リレーショナルモデルは、同じ情報を真逆に扱う。木をいったん<strong>バラバラのフラットな関係に分解</strong>し、それぞれを別のテーブルに置き、<strong>結合（JOIN）で組み立て直す</strong>。</p>
+        <div class="scroll-x"><table>
+          <thead><tr><th>ドキュメント指向</th><th>リレーショナル</th></tr></thead>
+          <tbody>
+            <tr><td>一件を木として<strong>埋め込む</strong></td><td>事実ごとに<strong>テーブルへ分解</strong>し参照で結ぶ</td></tr>
+            <tr><td>読みの形に最適化（画面＝ドキュメント）</td><td>事実の一貫した保管に最適化</td></tr>
+            <tr><td>取得は速い（1回で済む）</td><td>取得は結合が要る（が、更新に強い）</td></tr>
+            <tr><td>同じ情報が複数ドキュメントに重複しうる</td><td>一つの事実は一箇所にだけ（単一の事実源）</td></tr>
+          </tbody>
+        </table></div>
+        <p>Zephyrをリレーショナルに分解すると、後で正式化する<code>users</code> / <code>events</code> / <code>registrations</code> / <code>reviews</code> / <code>tags</code> / <code>event_tags</code>という別々の集合になる。「鈴木さんがこのイベントに参加した」という事実は、<code>events</code>の中にも<code>users</code>の中にもコピーされず、<code>registrations</code>に<strong>ユーザーIDとイベントIDの組として一度だけ</strong>書かれる。この「一度だけ」が、次に説明する更新異常を防ぐ鍵だ。</p>
+
+        <h3>なぜ分けるのか — 更新異常という一点</h3>
+        <p>埋め込み設計の弱点は、<strong>同じ事実が複数箇所にコピーされる</strong>ことにある。上のドキュメントで主催者の田中さんの名前が<code>organizer.name</code>に埋め込まれている。もし田中さんが主催するイベントが50件あれば、田中さんの名前は<strong>50箇所</strong>に散らばる。ここで田中さんが改姓したら、どうなるか。</p>
+        <ul>
+          <li><strong>更新異常</strong>：50件すべてを漏れなく書き換えねばならない。1件でも漏れれば「同じ人が二つの名前を持つ」という<strong>矛盾した状態</strong>がDBに残る。どちらが正しいのか、DBはもう知らない。</li>
+          <li><strong>挿入異常</strong>：まだイベントを一つも主催していない新入社員を「主催者として」登録したくても、イベントに埋め込む設計だと置き場所がない。</li>
+          <li><strong>削除異常</strong>：あるイベントを消したら、そこにしか埋め込まれていなかったタグの情報まで巻き添えで消える。</li>
+        </ul>
+        <p><strong>リレーショナルモデルは、この「一つの事実を一箇所にだけ置く（single source of truth）」を構造で強制するための道具立てだ。</strong> 田中さんの名前は<code>users</code>に一行だけ。イベントはそれを<code>organizer_id</code>という参照で指すだけ。改姓は<code>users</code>の一行を直せば、それを参照する全イベントに<strong>自動的に反映される</strong>——正確には「反映される」のではなく、<strong>最初からコピーが存在しない</strong>。矛盾のしようがない。これが正規化（<a href="#ch17">第17章</a>）の核心であり、RDBが「事実の一貫した保管」に最適化されているというのはこの意味だ。</p>
+        <aside class="mongo-note"><span class="tag">MongoDB脳の翻訳</span>
+        MongoDBで埋め込みを選ぶとき、あなたは無意識に「この情報は<strong>ほぼ変わらない</strong>か？」を判断していたはずだ。注文時点の商品名スナップショットのように「あえて当時の値を固定したい」場合、埋め込み（コピー）はむしろ正しい。RDBの正規化が絶対の正義なのではなく、<strong>「変化する事実か、凍結された記録か」で置き方を選ぶ</strong>という判断は両者に共通している。違うのはデフォルトだ。RDBは「分ける」から始めて必要な所だけ非正規化し、Mongoは「埋め込む」から始めて必要な所だけ参照にする。出発点が逆なだけで、悩んでいる軸は同じ——この対応関係を<a href="#ch17">第17章</a>で表にする。</aside>
+
+        <h3>スキーマ・オン・ライト vs スキーマ・オン・リード</h3>
+        <p>もう一つの根本的な思想差が、<strong>スキーマ（構造の定義）をいつ強制するか</strong>だ。</p>
+        <ul>
+          <li><strong>スキーマ・オン・ライト（RDB）</strong>：<strong>書き込む前に</strong>構造が決まっている。<code>events</code>には<code>title</code>があり<code>starts_at</code>はタイムスタンプ型だ、と<code>CREATE TABLE</code>で先に宣言する。型に合わないデータや、必須カラムの欠けたデータは<strong>書き込み時点で弾かれる</strong>。データの整合性はDBが門番として守る。</li>
+          <li><strong>スキーマ・オン・リード（ドキュメントDB）</strong>：書き込みは自由で、構造の解釈は<strong>読む側</strong>が引き受ける。あるドキュメントに<code>capacity</code>があって別のにはない、型が文字列だったり数値だったり——それを吸収するのはアプリのコードだ。</li>
+        </ul>
+        <p>MongoDB中心で長くやってきた人がRDBで最初に窮屈に感じるのがここだ。「カラムを一つ足すのにマイグレーションが要るのか」と。だがこの窮屈さは<strong>コストではなく保険</strong>だ。スキーマレスの自由は、時間が経つと「このフィールドはいつからあるのか」「なぜ半分のドキュメントにしか無いのか」という<strong>暗黙の履歴</strong>をアプリ側に溜め込む。RDBは構造を一箇所（スキーマ定義とマイグレーション履歴）に集約し、<strong>「今このテーブルはこういう形だ」を常にDBが保証する</strong>。この保証が、後のNOT NULL・外部キー・CHECK制約（<a href="#ch22">第22章</a>）という「最後の砦」に繋がっていく。</p>
+        <aside class="mongo-note"><span class="tag">MongoDB脳の翻訳</span>
+        「スキーマレス」は「スキーマが無い」のではなく、<strong>スキーマがコード側に暗黙に存在する</strong>だけだ。あなたのMongoアプリにも、実際には「イベントには必ずtitleがある」という前提がモデルやバリデーションに散らばっていたはずだ。RDBはその暗黙の前提を<strong>DBの宣言として明示化して一元管理する</strong>。移行時の心構えは「自由を奪われる」ではなく「頭の中と散在コードにあった不変条件を、DBに預けて守ってもらう」——こう捉えると第3部全体が一気に腑に落ちる。</aside>
+
+        <h3>Zephyrのテーブル群 — この先ずっと使う登場人物</h3>
+        <p>最後に、第3部を通して使うZephyrのスキーマの骨格を確定させておく。詳細な制約やインデックスは各章で肉付けするが、関係の全体像はここで掴んでほしい。</p>
+        <pre><code class="lang-sql">-- 利用者（社員）
+CREATE TABLE users (
+  id         BIGSERIAL PRIMARY KEY,
+  name       VARCHAR(255) NOT NULL,
+  email      VARCHAR(255) NOT NULL UNIQUE,
+  department VARCHAR(100),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- イベント（主催者はusersを参照）
+CREATE TABLE events (
+  id           BIGSERIAL PRIMARY KEY,
+  title        VARCHAR(255) NOT NULL,
+  starts_at    TIMESTAMPTZ  NOT NULL,
+  capacity     INTEGER      NOT NULL,
+  organizer_id BIGINT       NOT NULL REFERENCES users(id),
+  created_at   TIMESTAMPTZ  NOT NULL DEFAULT now()
+);
+
+-- 参加申込（User×Eventの中間・組で一意）
+CREATE TABLE registrations (
+  id         BIGSERIAL PRIMARY KEY,
+  user_id    BIGINT NOT NULL REFERENCES users(id),
+  event_id   BIGINT NOT NULL REFERENCES events(id),
+  status     VARCHAR(20) NOT NULL DEFAULT 'applied',  -- applied/confirmed/canceled
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (user_id, event_id)
+);</code></pre>
+        <p>「鈴木さんがイベント42に参加した」は<code>registrations</code>の一行だ。ユーザー名もイベント名もそこには無く、<strong>IDによる参照だけ</strong>がある。名前が欲しければJOINで<code>users</code>や<code>events</code>から取ってくる——それが次章のテーマだ。埋め込みなら1回で済んだ読みが、分けたことでJOINを要する。その代わり、事実は一箇所にしかなく矛盾しない。<strong>この「読みのコストを払って、書きの一貫性を買う」というトレードオフこそがリレーショナルモデルの本質</strong>であり、あなたがこれから翻訳していく感覚のすべての出発点だ。<code>reviews</code>・<code>tags</code>・<code>event_tags</code>の三つは、多対多を扱う<a href="#ch17">第17章</a>で正式に登場させる。</p>
+
+        <div class="check-wrap"><h3>理解度チェック</h3>
+          <details class="check"><summary>Q1. リレーショナルモデルにおける「関係（relation）」とは何を指すか。テーブルが「集合」であることから何が導かれるか？</summary><p>relationはテーブル同士のつながりではなく、<strong>一枚のテーブルそのもの</strong>（ある型を持つ行＝タプルの集合）を指す数学用語。テーブルが集合であることから、(1)行に本来的な順序はない（順序が欲しければ<code>ORDER BY</code>）、(2)まったく同じ行は重複して存在できない（ゆえに主キーで一意性を守る）、(3)SQLは集合演算を宣言的に書く言語である、という性質が導かれる。</p></details>
+          <details class="check"><summary>Q2. 埋め込み設計で主催者名をイベントにコピーしていると、どんな異常が起きうるか？</summary><p>同じ事実（主催者名）が複数箇所に重複するため、更新異常（改姓時に全コピーを漏れなく直さないと矛盾が残る）、挿入異常（イベントを持たない主催者を登録する場所がない）、削除異常（イベント削除で巻き添えに他の情報が消える）が起きる。リレーショナルモデルは「一つの事実を一箇所だけに置く（single source of truth）」を構造で強制してこれらを防ぐ。</p></details>
+          <details class="check"><summary>Q3. スキーマ・オン・ライトとスキーマ・オン・リードの違いは何か。RDBのどちらで、それは何を保証するか？</summary><p>スキーマ・オン・ライトは書き込む前に構造を定義し、型や必須項目に反するデータを書き込み時に弾く方式（RDB）。スキーマ・オン・リードは書き込みは自由で構造の解釈を読む側（アプリ）が担う方式（ドキュメントDB）。RDBは前者で、「今このテーブルはこの形をしている」という不変条件をDB自身が門番として保証する。スキーマレスは構造が消えるのではなくアプリ側の暗黙の前提として散在するだけで、RDBはそれを明示化・一元管理する。</p></details>
+        </div>
       </section>
 
       <section class="chapter" id="ch16">
