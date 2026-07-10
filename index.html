@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Zinia — 本棚</title>
+<style>
+  :root{
+    --bg:#faf9f7; --fg:#2b2a28; --muted:#6f6c66; --card:#ffffff;
+    --border:#e5e2dc; --accent:#0e8a16; --accent-soft:#eaf5eb;
+    --shadow:0 1px 3px rgba(0,0,0,0.06);
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#1b1a19; --fg:#e8e6e1; --muted:#9b978f; --card:#242322;
+      --border:#3a3835; --accent:#5fbf6a; --accent-soft:#233527;
+      --shadow:0 1px 3px rgba(0,0,0,0.35);
+    }
+  }
+  :root[data-theme="light"]{
+    --bg:#faf9f7; --fg:#2b2a28; --muted:#6f6c66; --card:#ffffff;
+    --border:#e5e2dc; --accent:#0e8a16; --accent-soft:#eaf5eb;
+    --shadow:0 1px 3px rgba(0,0,0,0.06);
+  }
+  :root[data-theme="dark"]{
+    --bg:#1b1a19; --fg:#e8e6e1; --muted:#9b978f; --card:#242322;
+    --border:#3a3835; --accent:#5fbf6a; --accent-soft:#233527;
+    --shadow:0 1px 3px rgba(0,0,0,0.35);
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--bg); color:var(--fg);
+    font-family:system-ui, -apple-system, "Hiragino Sans", "Noto Sans JP", sans-serif;
+    line-height:1.8;
+  }
+  .wrap{max-width:46em; margin:0 auto; padding:2.5rem 1.25rem 4rem}
+  header{display:flex; align-items:baseline; justify-content:space-between; gap:1rem; margin-bottom:0.5rem}
+  h1{font-size:1.7rem; margin:0; letter-spacing:0.02em}
+  .sub{color:var(--muted); margin:0 0 2rem; font-size:0.95rem}
+  #themeBtn{
+    background:var(--card); color:var(--fg); border:1px solid var(--border);
+    border-radius:8px; padding:0.35rem 0.7rem; cursor:pointer; font-size:0.85rem;
+  }
+  h2{font-size:1.05rem; color:var(--muted); font-weight:600; margin:2.5rem 0 1rem;
+     text-transform:uppercase; letter-spacing:0.08em}
+  .shelf{display:grid; gap:1rem}
+  .book{
+    display:block; background:var(--card); border:1px solid var(--border);
+    border-radius:12px; padding:1.25rem 1.4rem; text-decoration:none; color:inherit;
+    box-shadow:var(--shadow); transition:transform .12s ease, border-color .12s ease;
+  }
+  a.book:hover{transform:translateY(-2px); border-color:var(--accent)}
+  .book h3{margin:0 0 0.35rem; font-size:1.15rem}
+  .book p{margin:0; color:var(--muted); font-size:0.92rem}
+  .badge{
+    display:inline-block; font-size:0.72rem; font-weight:600; padding:0.1rem 0.55rem;
+    border-radius:999px; margin-bottom:0.5rem; letter-spacing:0.04em;
+  }
+  .badge.done{background:var(--accent-soft); color:var(--accent)}
+  .badge.plan{background:transparent; color:var(--muted); border:1px dashed var(--border)}
+  .book.planned{opacity:0.75}
+  .meta{font-size:0.8rem; color:var(--muted); margin-top:0.6rem}
+  footer{margin-top:3.5rem; font-size:0.8rem; color:var(--muted); border-top:1px solid var(--border); padding-top:1rem}
+  footer a{color:inherit}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>📚 Zinia</h1>
+    <button id="themeBtn" type="button">☀/☾ テーマ切替</button>
+  </header>
+  <p class="sub">仕事の足腰を鍛えるための、自家製の技術書棚。</p>
+
+  <h2>読める本</h2>
+  <div class="shelf">
+    <a class="book" href="books/year-end-adjustment/index.html">
+      <span class="badge done">公開中</span>
+      <h3>年末調整を体系的に理解する</h3>
+      <p>年末調整プロダクトに関わるエンジニアのためのドメイン知識の本。「収入→所得→課税所得→税額」の一枚の地図に、控除・帳票・改正の歴史・実装の勘所をぶら下げて、制度を暗記ではなく構造で理解する。</p>
+      <div class="meta">全6部27章＋用語集 ｜ 令和7年・8年改正対応 ｜ 2026-07</div>
+    </a>
+  </div>
+
+  <h2>準備中</h2>
+  <div class="shelf">
+    <div class="book planned">
+      <span class="badge plan">執筆予定</span>
+      <h3>Webアプリケーションを支えるもの</h3>
+      <p>現役Webエンジニアの学び直しの本。シェル・Git・HTTP・データベース（RDBの常識をMongoDB経験者の視点から）・認証認可・分散システムの入口までを、HOWではなくWHYで貫く。</p>
+      <div class="meta">全7部32章（予定）</div>
+    </div>
+  </div>
+
+  <footer>
+    各書籍の指示書は <a href="https://github.com/katsumata-ryo/zinia/tree/main/docs/proposals">docs/proposals/</a> にあります。
+  </footer>
+</div>
+<script>
+(function(){
+  var root=document.documentElement;
+  document.getElementById('themeBtn').addEventListener('click', function(){
+    var dark = root.getAttribute('data-theme')
+      ? root.getAttribute('data-theme')==='dark'
+      : window.matchMedia('(prefers-color-scheme: dark)').matches;
+    root.setAttribute('data-theme', dark ? 'light' : 'dark');
+  });
+})();
+</script>
+</body>
+</html>
