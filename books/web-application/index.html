@@ -409,7 +409,41 @@ committer Ryo &lt;...&gt; 1700000000 +0900
       <section class="chapter" id="ch3">
         <h2>第3章　パッケージマネージャと依存解決</h2>
         <div class="chap-hole"><span class="label">この章で埋まる穴</span><code>Gemfile.lock</code>が正確には何を固定しているのか。バージョン制約の解決（SATに近い問題）、セマンティックバージョニングの約束、lockファイルをコミットする理由。「なぜか手元では動くのにCIで壊れる」の多くはここに根があります。</div>
-        <p class="placeholder">（執筆予定）</p>
+
+        <p><code>bundle install</code>は毎日叩くのに、<code>Gemfile</code>と<code>Gemfile.lock</code>の役割分担を明確に説明できる人は意外と少ない。「lockはコミットする、では中身は何を固定している？」——この章はその一点を掘り下げる。依存解決は見た目の地味さに反して、コンピュータサイエンス的にはなかなか厄介な問題であり、そのことを知っておくと「なぜ解決に時間がかかるのか」「なぜたまに解けないのか」が腑に落ちる。</p>
+
+        <h3>セマンティックバージョニングは「約束」である</h3>
+        <p><code>1.4.2</code>のような<strong>major.minor.patch</strong>の3つ組は、ただの通し番号ではなく作者と利用者のあいだの<strong>互換性の約束</strong>だ。patchは後方互換のバグ修正、minorは後方互換の機能追加、majorは<strong>互換を壊す変更</strong>——この約束があるからこそ、利用者は「<code>1.x</code>のあいだなら上げても壊れないはず」と期待して制約を書ける。</p>
+        <p>Gemfileの<code>~&gt;</code>（悲観的バージョン制約）はこの約束に乗った書き方だ。<code>~&gt; 1.4</code>は「<code>1.4</code>以上<code>2.0</code>未満」、<code>~&gt; 1.4.2</code>は「<code>1.4.2</code>以上<code>1.5</code>未満」を意味する。最後の桁だけ動く余地を残す、と読むと覚えやすい。「minorまでは自動で取り込むがmajorは自分の判断で上げる」という意思表示だ。</p>
+        <aside class="eng-note"><span class="tag">補足</span>
+        SemVerはあくまで作者側の<strong>宣言</strong>であって、機械が保証してくれるものではない。「patchのつもりが実は壊す変更だった」という事故は現実に起きる。だからこそ次に述べるlockファイルとテストが要る。SemVerは信頼の前提であってセーフティネットそのものではない。</aside>
+
+        <h3>Gemfileは「制約」、Gemfile.lockは「解」</h3>
+        <p>両者の関係を一言でいえば、<code>Gemfile</code>は<strong>あなたが直接使いたいgemと、その許容バージョン範囲（制約）</strong>を書いた要求仕様であり、<code>Gemfile.lock</code>はその制約を満たすように<strong>実際に選ばれた全gemの厳密なバージョンの一覧（解）</strong>だ。</p>
+        <p>ここで重要なのは、lockファイルが固定しているのは<code>Gemfile</code>に書いた数個のgemだけではない、という点だ。あなたが<code>rails</code>を1つ要求すると、railsが依存する<code>actionpack</code>が、それが依存する<code>rack</code>が……と<strong>依存の木全体（推移的依存）</strong>が芋づる式に決まる。lockファイルはこの木に登場する<strong>すべてのgemの厳密なバージョンとソース</strong>を書き留めている。</p>
+        <pre><code class="lang-ruby"># Gemfile — 制約（意図）
+gem "rails", "~&gt; 7.1"
+gem "pg"
+
+# Gemfile.lock（抜粋）— 解（結果）。直接書いていないものまで全部固定される
+#   actionpack (7.1.3)
+#   rack (3.0.9)
+#   pg (1.5.4)
+#   ...（数十〜数百行）</code></pre>
+        <p>この「解を丸ごと固定する」ことが<strong>再現性</strong>を生む。lockファイルがあれば、<code>bundle install</code>は制約を解き直さず、書かれた通りのバージョンをそのまま入れる。だからあなたの手元・同僚の手元・CI・本番のすべてで<strong>まったく同じ依存の集合</strong>が再現される。lockをコミットする理由はここに尽きる。</p>
+
+        <h3>「手元では動くのにCIで壊れる」の正体</h3>
+        <p>この定番トラブルの多くは、lockファイルの扱いの綻びだ。典型は、誰かが<code>Gemfile</code>を変えて<code>bundle install</code>した結果<code>Gemfile.lock</code>も更新されたのに、<strong>lockをコミットし忘れた</strong>ケース。あるいはCIが<code>bundle install</code>ではなく<code>bundle install --frozen</code>相当（lockと矛盾するなら失敗する厳格モード）で回っていて、ローカルのゆるいインストールとの差が露呈するケース。いずれも「制約」と「解」のどちらを正としているかのズレだ。CIは<strong>lockを正</strong>として厳格に入れるべきで、そうすれば「解のズレ」は本番に出る前にCIで捕まる。</p>
+
+        <h3>依存解決はなぜ難しいのか</h3>
+        <p>依存解決は「各gemの制約を全部同時に満たすバージョンの組み合わせを見つける」問題だ。gem Aは<code>rack &gt;= 3.0</code>を、gem Bは<code>rack &lt; 3.0</code>を要求する、といった<strong>制約どうしの衝突</strong>が起きうる。しかも1つのバージョンを変えると連鎖的に他の可能な組み合わせが変わる。これは本質的に<strong>制約充足問題</strong>であり、一般には効率よく解ける保証のない（NP困難に属する種類の）難しさを持つ。</p>
+        <p><code>bundle update</code>がときに驚くほど時間を要したり、「これらの制約は同時に満たせません」と諦めたりするのは、bundlerがこの組み合わせ探索を裏で回しているからだ。「なぜ解けないのか」と苛立つ前に、これは<strong>本質的に難しい問題を解いている</strong>のだと知っておくと、制約を緩める・古いgemを外すといった打ち手に冷静に向かえる。</p>
+
+        <div class="check-wrap"><h3>理解度チェック</h3>
+          <details class="check"><summary>Q1. <code>~&gt; 1.4.2</code>と<code>~&gt; 1.4</code>はそれぞれどんなバージョン範囲を許すか。この書き方は何を前提にしているか？</summary><p><code>~&gt; 1.4.2</code>は<code>&gt;= 1.4.2, &lt; 1.5.0</code>、<code>~&gt; 1.4</code>は<code>&gt;= 1.4.0, &lt; 2.0.0</code>。最後の桁だけ動かす、と読める。SemVer（patch/minorは後方互換、majorで互換を壊す）という作者側の約束を前提に「互換の範囲では自動で追従する」という意図を表す。</p></details>
+          <details class="check"><summary>Q2. <code>Gemfile.lock</code>は<code>Gemfile</code>に直接書いたgemだけを固定しているわけではない。何を固定しているか、なぜそれが再現性を生むか？</summary><p>直接依存だけでなく、それらが引き連れる<strong>推移的依存を含む全gemの厳密なバージョンとソース</strong>を固定している。全員が同じlockからインストールすれば、依存の集合が完全に一致する。これが手元・CI・本番の環境差をなくし再現性を担保する。</p></details>
+          <details class="check"><summary>Q3. なぜ<code>bundle update</code>は時間がかかったり「解けない」と失敗したりするのか？</summary><p>依存解決は全gemの制約を同時に満たす組み合わせを探す<strong>制約充足問題</strong>で、本質的に難しい（NP困難の種類）。制約どうしが衝突すれば解が存在せず失敗し、探索空間が広ければ時間もかかる。地味に見えて計算量的に厄介な問題を裏で解いているため。</p></details>
+        </div>
       </section>
 
       <section class="chapter" id="ch4">
