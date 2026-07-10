@@ -449,7 +449,71 @@ gem "pg"
       <section class="chapter" id="ch4">
         <h2>第4章　言語の足元</h2>
         <div class="chap-hole"><span class="label">この章で埋まる穴</span>値と参照、ミュータビリティ、例外設計、そして金額計算での浮動小数点とDecimal。<code>0.1 + 0.2 != 0.3</code>がなぜ起きるか、Webアプリで金額をIntegerやBigDecimalで持つべき理由を、IEEE 754の仕組みから腹落ちさせます。</div>
-        <p class="placeholder">（執筆予定）</p>
+
+        <p>言語の「足元」には、フレームワークが隠してくれない素の挙動がいくつかある。同じ配列を2箇所で共有していたら片方の変更が両方に効いた、金額の合計が1円ずれた、例外を握りつぶしたらバグが見えなくなった——どれも言語の基礎の理解が薄いと踏む地雷だ。この章では、値と参照・ミュータビリティ・例外設計・数値表現という4つの足場を、Rubyを軸に固める。</p>
+
+        <h3>値と参照 — 変数は「名札」である</h3>
+        <p>Rubyでは、変数はオブジェクトそのものを入れる箱ではなく、オブジェクトに貼る<strong>名札</strong>だと考えるのが正確だ。代入は名札の貼り替え、複数の変数が同じオブジェクトを指すこともある。「値渡しか参照渡しか」という古い問いより、「2つの名前が同じ実体を指しているか」で考えるほうが実務に効く。</p>
+        <pre><code class="lang-ruby">a = "hello"
+b = a          # bとaは同じ文字列オブジェクトを指す名札
+b &lt;&lt; " world"   # 破壊的変更：指している実体そのものを書き換える
+a              # =&gt; "hello world"   aも変わって見える（同じ実体だから）
+
+b = "bye"      # これは名札の貼り替え。実体を書き換えたわけではない
+a              # =&gt; "hello world"  aは影響を受けない</code></pre>
+        <p>肝は、<strong>破壊的操作（実体の書き換え）</strong>と<strong>再代入（名札の貼り替え）</strong>を区別することだ。前者は同じ実体を指す他の名前すべてに波及するが、後者はその名前だけの話で終わる。この違いを取り違えると、「渡した引数がメソッドの中で書き換わっていた」という追いにくいバグになる。</p>
+
+        <h3>ミュータビリティ — 破壊的変更の罠</h3>
+        <p>Rubyの<code>String</code>や<code>Array</code>、<code>Hash</code>はミュータブル（変更可能）だ。だから共有された実体を誰かが破壊的に変更すると、意図しない場所に影響が及ぶ。とりわけ危ないのが<strong>デフォルト引数や定数として可変オブジェクトを共有する</strong>パターンだ。</p>
+        <pre><code class="lang-ruby">TAGS = ["ruby", "rails"]
+
+def add_tag(tag, tags = TAGS)   # 危険：全呼び出しが同じ配列を共有
+  tags &lt;&lt; tag                    # 破壊的変更が定数に波及する
+end
+add_tag("db")
+TAGS   # =&gt; ["ruby", "rails", "db"]   定数が汚染された</code></pre>
+        <p>対策は、破壊的メソッド（<code>&lt;&lt;</code>、<code>push</code>、<code>gsub!</code>、<code>merge!</code>など末尾<code>!</code>や配列演算子）を共有オブジェクトに使わないこと、必要なら<code>dup</code>で複製してから触ること、そして「変えないもの」は<code>freeze</code>して破壊的変更を実行時エラーにすることだ。Rubyの文字列リテラルを凍結する<code>frozen_string_literal: true</code>マジックコメントも、この事故を減らすための仕組みだ。</p>
+        <aside class="eng-note"><span class="tag">補足</span>
+        <code>Integer</code>や<code>Symbol</code>、<code>true</code>/<code>false</code>/<code>nil</code>はイミュータブルで、同じ値なら同一オブジェクトが使い回される。だから数値やシンボルを「共有していて書き換わる」心配はない。可変なのは主に<code>String</code>/<code>Array</code>/<code>Hash</code>などのコンテナ。ここを意識するだけで注意すべき対象がぐっと絞れる。</aside>
+
+        <h3>例外は「異常系」のためにある</h3>
+        <p>例外を制御フロー（通常の分岐）として使うと、コードは読みにくく遅くなる。例外は<strong>「その場では正常に続行できない異常事態」を、呼び出し元へ伝播させる</strong>仕組みだ。設計上の指針はいくつかある。まず<strong>握りつぶさない</strong>——<code>rescue =&gt; e</code>で拾って何もしないと、バグが沈黙し、後の障害調査で手がかりを失う。次に<strong>拾う範囲を絞る</strong>——<code>rescue StandardError</code>のように広く拾うと、想定外のバグまで飲み込んでしまう。想定した異常（レコード未検出、外部APIタイムアウトなど）だけを名指しで拾い、それ以外は上へ通すのが基本だ。</p>
+        <pre><code class="lang-ruby"># 悪い例：異常を握りつぶし、原因が闇に消える
+begin
+  charge_payment(order)
+rescue =&gt; e
+  nil
+end
+
+# よい例：想定した異常だけ扱い、ログを残し、それ以外は伝播させる
+begin
+  charge_payment(order)
+rescue Payment::Timeout =&gt; e
+  Rails.logger.warn("payment timeout: #{e.message}")
+  raise   # 上位のリトライ層に判断を委ねる
+end</code></pre>
+        <p>「例外を投げるか、戻り値でエラーを返すか」は設計判断だ。予期される失敗（バリデーション違反など）は戻り値や<code>Result</code>的な型で表し、真に異常な事態だけ例外にする、という切り分けが読みやすいコードを生む。</p>
+
+        <h3>浮動小数点はなぜ金額に使えないか</h3>
+        <p>ここが実務でいちばん刺さる話だ。<code>0.1 + 0.2</code>が<code>0.3</code>にならない——これはバグではなく、コンピュータの数値表現の必然だ。</p>
+        <pre><code class="lang-ruby">0.1 + 0.2        # =&gt; 0.30000000000000004
+(0.1 + 0.2) == 0.3   # =&gt; false</code></pre>
+        <p>原因は、Floatが<strong>IEEE 754の二進浮動小数点</strong>で、有限桁の2進小数しか表せないことにある。十進の<code>0.1</code>は2進では<code>0.0001100110011…</code>と<strong>循環して終わらない</strong>。ちょうど十進で<code>1/3 = 0.333…</code>が割り切れないのと同じで、2進では<code>1/10</code>が割り切れない。だから<code>0.1</code>は「本当の0.1にごく近い別の値」として格納され、その微小な誤差が演算で表面化する。</p>
+        <p>金額計算でこれが致命的なのは、1円未満のズレが積み重なって合計が合わなくなり、会計上の不整合を生むからだ。対策は2つ。ひとつは<strong>最小単位の整数で持つ</strong>——金額を「円」ではなく「銭」や「セント」といった最小単位のInteger（Railsなら<code>_cents</code>カラム）で保持し、整数演算だけで完結させる。もうひとつは<strong>BigDecimal</strong>を使い、十進を十進のまま正確に扱う。</p>
+        <pre><code class="lang-ruby">require "bigdecimal"
+BigDecimal("0.1") + BigDecimal("0.2")   # =&gt; 0.3e0  正確
+
+# 整数で持つ例：1980円を 198000 銭 として保存し、演算は整数で
+price_cents = 198_000
+tax_cents   = (price_cents * 10 / 100)   # 整数演算なら誤差が出ない</code></pre>
+        <aside class="eng-note"><span class="tag">補足</span>
+        <code>BigDecimal</code>を作るときは<code>BigDecimal("0.1")</code>と<strong>文字列から</strong>生成すること。<code>BigDecimal(0.1)</code>とFloatを渡すと、すでに誤差を含んだ二進の値を取り込んでしまい、正確さの意味がなくなる。「誤差はFloatになった瞬間に混入する」と覚えておくとよい。DB側も金額は<code>decimal</code>型（精度と桁数を指定）にするのが定石で、<code>float</code>/<code>double</code>で金額を持つのは避ける。</aside>
+
+        <div class="check-wrap"><h3>理解度チェック</h3>
+          <details class="check"><summary>Q1. <code>b = a; b &lt;&lt; "x"</code>で<code>a</code>まで変わるのに、<code>b = "y"</code>では<code>a</code>が変わらないのはなぜか？</summary><p>変数はオブジェクトを指す名札。<code>b = a</code>で両者は同じ実体を指す。<code>&lt;&lt;</code>は<strong>その実体を破壊的に書き換える</strong>ので、同じ実体を指す<code>a</code>にも波及する。一方<code>b = "y"</code>は<code>b</code>の名札を別オブジェクトへ<strong>貼り替える</strong>だけで、実体は書き換えていないため<code>a</code>は無関係。</p></details>
+          <details class="check"><summary>Q2. 例外を<code>rescue =&gt; e</code>で広く拾って何もしない（握りつぶす）のがなぜ危険か？</summary><p>想定外のバグまで飲み込んでエラーが沈黙し、障害の原因調査で手がかりを失う。加えて広い<code>rescue</code>は本来上位で処理・リトライすべき異常まで奪う。想定した異常だけを名指しで拾い、ログを残し、それ以外は上位へ伝播させるべき。</p></details>
+          <details class="check"><summary>Q3. <code>0.1 + 0.2 != 0.3</code>はなぜ起きるか。金額をどう持てば安全か？</summary><p>Floatは二進浮動小数点（IEEE 754）で、十進の0.1は2進では循環小数になり正確に表せないため微小な誤差が出る。金額は<strong>最小単位のInteger</strong>（銭・セント）で持って整数演算するか、<strong>BigDecimal</strong>（文字列から生成）で十進を正確に扱う。DBもdecimal型にする。</p></details>
+        </div>
       </section>
 
       <section class="chapter" id="ch5">
