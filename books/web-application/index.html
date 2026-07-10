@@ -829,7 +829,52 @@ Content-Type: text/html; charset=utf-8
       <section class="chapter" id="ch11">
         <h2>第11章　ブラウザ側の基礎</h2>
         <div class="chap-hole"><span class="label">この章で埋まる穴</span>HTMLセマンティクス、<code>form</code>の素の挙動（JSなしで何が起きるか）、レンダリングの流れ（パース→DOM/CSSOM→レイアウト→ペイント）、CSSボックスモデルの要点。フレームワークが隠している「ブラウザの素の動き」を取り戻します。</div>
-        <p class="placeholder">（執筆予定）</p>
+
+        <p>ReactやHotwireを日常的に使っていると、<strong>ブラウザが素で持っている力</strong>を忘れがちだ。「クリックしたら送信」も「フォームの内容をサーバへ」も、JavaScriptを1行も書かずにブラウザ自身ができる。フレームワークはその素の挙動を<strong>拡張・上書き</strong>しているにすぎない。この章は、フレームワークが隠しているブラウザの地の動き——<strong>セマンティクス・formの送信・レンダリングの流れ・ボックスモデル</strong>——を取り戻す。ここが分かると、「なぜこのHTMLでアクセシビリティが上がるのか」「なぜJSを切っても最低限動くべきなのか」「なぜレイアウトが重いのか」が原理から見える。</p>
+
+        <h3>セマンティックHTML — タグは見た目でなく「意味」を表す</h3>
+        <p>HTMLの<code>&lt;h1&gt;</code>や<code>&lt;nav&gt;</code>や<code>&lt;button&gt;</code>は、<strong>見た目を指定するためのものではなく、その要素が「何であるか」という意味（セマンティクス）を宣言するもの</strong>だ。見た目はCSSの仕事であり、<code>&lt;div&gt;</code>にスタイルを当てれば見た目上はボタンにもできる。だが<strong>意味</strong>は付かない。</p>
+        <p>なぜ意味が重要か。HTMLの意味を頼りにしている<strong>読み手が人間だけではない</strong>からだ。スクリーンリーダーは<code>&lt;button&gt;</code>を「ボタン」と読み上げ、Enterやスペースで操作可能にし、Tabキーでのフォーカス移動対象にする。検索エンジンは<code>&lt;h1&gt;</code>を見出しとして重みづけする。<code>&lt;div onclick&gt;</code>で作った「見た目だけのボタン」は、これらの支援を<strong>すべて自前で再実装</strong>しなければ等価にならない（フォーカス可能にし、キーボード操作を足し、ロールを宣言し…）。正しいタグを選ぶことは、<strong>ブラウザとその周辺技術が用意した膨大な既定の振る舞いを、タダで受け取る</strong>ことなのだ。</p>
+        <aside class="eng-note"><span class="tag">補足</span>
+        「<code>&lt;div&gt;</code>と<code>&lt;span&gt;</code>だけでUIが作れてしまう」ことが、セマンティクス軽視の温床になる。だが<code>&lt;button&gt;</code>・<code>&lt;a&gt;</code>・<code>&lt;label&gt;</code>・<code>&lt;table&gt;</code>・<code>&lt;nav&gt;</code>／<code>&lt;main&gt;</code>／<code>&lt;article&gt;</code>といった要素を<strong>意味どおりに使う</strong>だけで、アクセシビリティもSEOも底上げされる。迷ったら「この要素は<em>何</em>か（ボタンか、リンクか、見出しか）」を先に決め、見た目はCSSで後から与える。</aside>
+
+        <h3>formの素の挙動 — JavaScriptなしで送信は完結する</h3>
+        <p>ここが本章で最も「取り戻す」価値のある知識だ。<code>&lt;form&gt;</code>は、<strong>JavaScriptが一切なくても、ブラウザ単体でサーバへデータを送れる</strong>完結した機構だ。<a href="#ch9">第9章</a>のHTTPメソッドが、ここで実際に発火する。</p>
+        <pre><code class="lang-js">&lt;form action="/registrations" method="post"&gt;
+  &lt;input type="hidden" name="event_id" value="42"&gt;
+  &lt;button type="submit"&gt;このイベントに申し込む&lt;/button&gt;
+&lt;/form&gt;</code></pre>
+        <p>この<code>&lt;button&gt;</code>を押すと、ブラウザは<strong>自分で</strong>次をやる：フォーム内の<code>name</code>付き入力を集めてエンコードし、<code>action</code>のURLへ<code>method</code>で指定されたHTTPリクエスト（ここではPOST）を組み立てて送信し、返ってきたレスポンスで<strong>ページ全体を置き換える</strong>。<code>method</code>の既定は<code>get</code>で、GETならデータは<strong>URLのクエリ文字列</strong>に載る（だから検索フォームは結果をブックマークできる）。POSTなら<strong>リクエストボディ</strong>に載る。<a href="#ch9">第9章</a>で見た「GETは安全・冪等、POSTは非冪等」が、そのままフォームの使い分け（検索はGET、申込はPOST）に対応している。</p>
+        <p>この事実の含意は大きい。<strong>Zephyrの申込ボタンは、本来JSがなくても動く</strong>。ReactやHotwireでの実装は、この素の送信を<code>fetch</code>で置き換えて<strong>ページ全体の再読み込みを避けている</strong>だけだ。だからこそ、JSが失敗しても最低限フォームは送信できる作り（プログレッシブ・エンハンスメント）が堅牢とされる。素の挙動を知らないと、フレームワークが「何を肩代わりしているのか」が見えない。<code>fetch</code>やその背後の非同期処理は<a href="#ch12">第12章</a>の主題だ。</p>
+
+        <h3>レンダリングの流れ — HTMLとCSSが画面になるまで</h3>
+        <p><a href="#ch8">第8章</a>で「返ってきたHTMLを画面にする」と流した段を、ここで開く。ブラウザは受け取ったバイト列を、おおよそ次のパイプラインで画面に変える。</p>
+        <ol>
+          <li><strong>パース → DOMツリー</strong>：HTMLテキストを解析し、要素の親子関係を木構造（DOM）にする。</li>
+          <li><strong>CSSパース → CSSOMツリー</strong>：CSSを解析し、どの要素にどのスタイルが効くかの木（CSSOM）を作る。</li>
+          <li><strong>レンダーツリー</strong>：DOMとCSSOMを合成し、<strong>実際に描画される要素</strong>（<code>display:none</code>は除外される）とその見た目を確定する。</li>
+          <li><strong>レイアウト（リフロー）</strong>：各要素の<strong>位置と大きさ</strong>を計算する。「この要素は画面上のどこに、何ピクセルで置かれるか」を全部決める重い工程。</li>
+          <li><strong>ペイント</strong>：計算された各要素を、実際のピクセル（色・文字・境界線）として塗る。</li>
+          <li><strong>合成（コンポジット）</strong>：塗ったレイヤーを重ね合わせて最終画面にする。</li>
+        </ol>
+        <p>この流れを知ると<strong>パフォーマンスの勘所</strong>が見える。JavaScriptで要素のサイズや位置を変えると、<strong>レイアウトから下が再計算</strong>される（リフロー）。多数の要素を1つずつ動かすようなコードがカクつくのはこれだ。一方、<code>transform</code>や<code>opacity</code>の変更は<strong>合成の段だけで済む</strong>ことが多く軽い。「アニメーションは<code>transform</code>で」という定石は、このパイプラインのどこを触るかという理屈から来ている。</p>
+        <aside class="eng-note"><span class="tag">補足</span>
+        <code>&lt;script&gt;</code>は既定でパースを<strong>止める</strong>。HTMLを読んでいる途中でスクリプトに出会うと、ブラウザはDOM構築を中断してそれを取得・実行する（スクリプトがDOMを書き換えうるため）。だから重要でないJSは<code>&lt;/body&gt;</code>直前に置くか、<code>defer</code>／<code>async</code>属性で「パースを止めずに読み込む」よう指示するのが定石だ。CSSも描画をブロックする（スタイル未確定のまま描くとちらつくため）。「何がレンダリングを止めるか」を知ることが、体感速度の改善に直結する。</aside>
+
+        <h3>CSSボックスモデル — すべての要素は入れ子の箱</h3>
+        <p>CSSレイアウトの土台は、<strong>すべての要素が4層の同心の箱でできている</strong>という見方だ。内側から<strong>content（中身）→ padding（内側の余白）→ border（境界線）→ margin（外側の余白）</strong>。要素が占める領域も、隣の要素との間隔も、すべてこの4層の合算で決まる。</p>
+        <div class="figure">
+        [ margin [ border [ padding [ content ] padding ] border ] margin ]
+        <div class="cap">ボックスモデル。内側のcontentを、padding・border・marginが順に取り囲む。</div>
+        </div>
+        <p>初学者を最も混乱させるのが<strong>「<code>width</code>は何の幅か」</strong>だ。既定（<code>box-sizing: content-box</code>）では、<code>width</code>は<strong>contentだけ</strong>の幅を指し、paddingやborderは<strong>その外側に加算</strong>される。だから<code>width: 200px; padding: 20px; border: 1px</code>の要素は、画面上では<strong>242px</strong>を占める。「200pxのつもりが枠からはみ出す」の正体だ。これを直感的にするのが<code>box-sizing: border-box</code>で、こちらでは<code>width</code>が<strong>borderまで含めた全体</strong>を指すため、指定した値どおりの見た目の幅になる。多くのCSSリセットが<code>* { box-sizing: border-box }</code>を最初に敷くのは、この計算を分かりやすくするためだ。</p>
+        <p>もう一つの要点は<strong>marginの相殺（margin collapsing）</strong>。上下に隣接する要素のmarginは<strong>合算されず、大きい方だけが採用される</strong>。「上に20px、下に30pxのmarginを付けたのに間隔が50pxでなく30pxになる」のはバグではなく仕様だ。ボックスモデルを知っていれば、こうした「思ったとおりにならないレイアウト」の大半は説明できる。</p>
+
+        <div class="check-wrap"><h3>理解度チェック</h3>
+          <details class="check"><summary>Q1. <code>&lt;div onclick&gt;</code>でボタンを作るのと<code>&lt;button&gt;</code>を使うのとで、何が違うか？</summary><p><code>&lt;button&gt;</code>は「ボタンである」という意味を持ち、フォーカス可能・キーボード操作可能・スクリーンリーダーがボタンと読み上げる、といった既定の振る舞いをタダで得られる。<code>&lt;div&gt;</code>は見た目を似せられても意味がなく、それらの支援をすべて自前で再実装しないと等価にならない。正しいタグ選択はブラウザの既定の振る舞いを受け取ること。</p></details>
+          <details class="check"><summary>Q2. JavaScriptなしで<code>&lt;form&gt;</code>を送信すると、ブラウザは何をするか？</summary><p>name付き入力を集めてエンコードし、<code>action</code>のURLへ<code>method</code>指定のHTTPリクエストを組み立てて送信し、返ってきたレスポンスでページ全体を置き換える。GETならデータはクエリ文字列、POSTならリクエストボディに載る。フレームワークはこの素の送信をfetchで置き換え、全体再読み込みを避けているだけ。</p></details>
+          <details class="check"><summary>Q3. <code>transform</code>でのアニメーションが軽く、要素の<code>width</code>を毎フレーム変えるのが重いのはなぜか？</summary><p>widthの変更は要素の大きさを変えるためレイアウト（リフロー）から下が再計算され重い。一方transformやopacityの変更は合成（コンポジット）の段だけで済むことが多く、レイアウトやペイントをやり直さないため軽い。レンダリングパイプラインのどこを触るかで負荷が決まる。</p></details>
+        </div>
       </section>
 
       <section class="chapter" id="ch12">
