@@ -306,7 +306,54 @@
       <section class="chapter" id="ch1">
         <h2>第1章　ターミナルとシェル</h2>
         <div class="chap-hole"><span class="label">この章で埋まる穴</span>パス解決・環境変数・パーミッション・パイプとリダイレクトを「なんとなく」で使っている人が、シェルが何をしているのかを一本の理屈でつかむ章。<code>$PATH</code>はなぜ順序が重要か、<code>|</code>と<code>&gt;</code>は何を繋ぎ替えているのかを、ファイルディスクリプタの視点から理解します。</div>
-        <p class="placeholder">（執筆予定）</p>
+
+        <p>ターミナルは毎日開いている。<code>cd</code>して<code>bundle exec rspec</code>して<code>git push</code>する。だが「シェルとは何をするプログラムか」を一文で説明しろと言われると、意外に詰まる。この章の狙いは、シェルの仕事を<strong>「文字列を解釈して、正しいプロセスを、正しい入出力の繋がりで起動する係」</strong>という一本の理解に畳み込むことだ。ここが固まると、パスが通らない・環境変数が効かない・パイプが思った通りに繋がらない、といった日常のつまずきが、その場のまじないでなく理屈で解けるようになる。</p>
+
+        <h3>シェルはコマンドをどう見つけるか — <code>$PATH</code></h3>
+        <p>ターミナルに<code>ls</code>と打つと一覧が出る。この<code>ls</code>という3文字から、<code>/bin/ls</code>という実行ファイルにたどり着くまでに、シェルは<code>$PATH</code>という環境変数を使っている。<code>$PATH</code>はコロン区切りのディレクトリのリストで、シェルはこれを<strong>左から順に</strong>見ていき、<code>ls</code>という名前の実行可能ファイルが最初に見つかったディレクトリのものを起動する。</p>
+        <pre><code class="lang-ruby">$ echo $PATH
+/Users/you/.rbenv/shims:/usr/local/bin:/usr/bin:/bin
+
+$ which ruby
+/Users/you/.rbenv/shims/ruby   # 左のディレクトリで先に見つかったものが勝つ</code></pre>
+        <p>「順序が重要」というのがここでの肝だ。rbenvやasdfのようなバージョン管理ツールが動くのは、システムの<code>/usr/bin/ruby</code>より<strong>手前</strong>に自分のshimディレクトリを差し込んでいるからにほかならない。逆に、インストールしたはずのコマンドが「command not found」になるのは、そのディレクトリが<code>$PATH</code>に入っていないか、より手前に同名の別物がいるかのどちらかだ。<code>which</code>や<code>type</code>で「実際にどれが選ばれるか」を確認する癖をつけると、この種の問題は一瞬で切り分けられる。</p>
+
+        <h3>環境変数はなぜ「継承」されるのか</h3>
+        <p>環境変数は、プロセスからプロセスへ受け渡される小さな辞書だ。ポイントは<strong>親プロセスから子プロセスへ一方向にコピーされる</strong>という点にある。シェルがコマンドを起動するとき、シェルは自分の環境変数の写しを子プロセスに渡す。だから<code>export</code>したものは、そのシェルから起動されるすべての子（Rubyプロセス、<code>bundle</code>、<code>rails server</code>）に届く。</p>
+        <pre><code class="lang-ruby">$ FOO=bar          # このシェルの変数。子には渡らない
+$ ruby -e 'puts ENV["FOO"].inspect'   # => nil
+
+$ export FOO=bar   # 環境変数に昇格。子プロセスへ継承される
+$ ruby -e 'puts ENV["FOO"].inspect'   # => "bar"</code></pre>
+        <p><code>export</code>のありなしで挙動が変わるのは、この「継承されるかどうか」の線引きそのものだ。そして継承は<strong>コピー</strong>なので、子プロセスが自分の環境変数をいじっても親には反映されない。<code>.env</code>を読み込むgem（dotenvなど）が「プロセス起動時に読む」設計になっているのも、環境変数が起動時のコピーで決まるからだ。実行中のRailsサーバに<code>.env</code>の変更を効かせるには再起動が要る、という現場のあるあるは、この一方向コピーの帰結として理解できる。</p>
+
+        <h3>パーミッション — rwx × 3つの主体</h3>
+        <p><code>ls -l</code>で出てくる<code>-rwxr-xr--</code>のような文字列は、3ビット×3グループで読める。読み(r=4)・書き(w=2)・実行(x=1)の3種類の許可を、<strong>所有者・グループ・その他</strong>の3つの主体それぞれに対して定めている。<code>chmod 755</code>の<code>7=4+2+1</code>（所有者に全部）、<code>5=4+1</code>（グループとその他に読みと実行）という数字は、このビットの足し算だ。</p>
+        <div class="scroll-x"><table>
+          <tr><th></th><th>所有者</th><th>グループ</th><th>その他</th></tr>
+          <tr><td><code>rwxr-xr--</code></td><td>rwx (7)</td><td>r-x (5)</td><td>r-- (4)</td></tr>
+        </table></div>
+        <p>Webアプリの文脈でこれが効いてくるのは、たとえばデプロイ後に「実行ファイルなのに実行できない」（xビットが落ちている）、あるいは「秘密鍵ファイルが緩すぎてSSHに拒否される」（<code>600</code>でないと弾かれる）といった場面だ。ディレクトリの<code>x</code>は「そこを通り抜ける（中のファイルにアクセスする）権利」を意味する、というのも覚えておくとよい。読みビットだけあってもディレクトリを<code>cd</code>で通れない、という一見ふしぎな挙動はこれで説明がつく。</p>
+
+        <h3>パイプとリダイレクト — すべてはファイルディスクリプタの繋ぎ替え</h3>
+        <p>ここが章の背骨だ。あらゆるプロセスは、起動時に3本の標準的な口を持っている。標準入力（fd 0）・標準出力（fd 1）・標準エラー出力（fd 2）だ。fd（ファイルディスクリプタ）とは、プロセスが開いている入出力先に振られた番号にすぎない。そして<strong>UNIXでは端末もファイルもパイプも、すべて「読み書きできる何か」として同じfdの仕組みで扱われる</strong>。この統一こそがパイプとリダイレクトの正体だ。</p>
+        <p>リダイレクト<code>&gt;</code>は、fd 1（標準出力）の接続先を、端末からファイルへ<strong>付け替える</strong>操作だ。プログラム自身は「標準出力に書く」ことしか知らない。その出力先が画面なのかファイルなのかを決めているのはシェルの側だ。</p>
+        <pre><code class="lang-ruby">$ rails runner 'puts Report.summary' &gt; report.txt   # fd1 をファイルへ
+$ some_task 2&gt; error.log        # fd2(標準エラー)だけをファイルへ
+$ some_task &gt; out.log 2&gt;&amp;1      # fd2 を fd1 と同じ先へ「複製」する</code></pre>
+        <p>パイプ<code>|</code>は、左のプロセスのfd 1を、右のプロセスのfd 0へ直結する。<code>2&gt;&amp;1</code>の<code>&amp;1</code>が「ファイル名ではなくfd 1そのもの」を指すことに注意すると、<code>&gt; out.log 2&gt;&amp;1</code>が「まず標準出力をファイルへ向け、次に標準エラーを標準出力と同じ先へ」という順序で読めるようになる。順序を逆にすると期待通りにならない、という定番のハマりも、これが「その時点でのfd 1の接続先を複製する」操作だと分かれば腑に落ちる。</p>
+        <pre><code class="lang-ruby">$ cat production.log | grep "N+1" | wc -l   # 各段の stdout→次の stdin
+</code></pre>
+        <p>3つのプロセスが同時に立ち上がり、データが左から右へ流れていく。<code>grep</code>は自分の入力がファイルなのか前段の<code>cat</code>なのかを区別しない。ただfd 0から読むだけだ。この「小さな道具を繋いで大きな仕事をする」思想（UNIX哲学）が、シェルという道具の設計の根にある。</p>
+
+        <aside class="eng-note"><span class="tag">補足</span>
+        <code>command &amp;</code>の末尾の<code>&amp;</code>は「バックグラウンド実行」、<code>2&gt;&amp;1</code>の<code>&amp;</code>は「fdの複製」で、同じ記号だが役割が違う。前者はジョブ制御、後者はfdの参照だ。シェルの文法で同じ文字が文脈で意味を変えるのは珍しくないので、「今どの文脈にいるか」を意識すると混乱しにくい。</aside>
+
+        <div class="check-wrap"><h3>理解度チェック</h3>
+          <details class="check"><summary>Q1. インストールしたはずのコマンドが「command not found」になる。まず何を確認するか、その理由とともに説明できるか？</summary><p>そのコマンドの実体があるディレクトリが<code>$PATH</code>に含まれているかを確認する。シェルは<code>$PATH</code>を左から順に探索し、最初に一致した実行ファイルを起動するため、パスに入っていなければ見つからず、逆に手前に同名の別物があればそちらが選ばれる。<code>which</code>や<code>type</code>で「実際に何が選ばれるか」を見るのが確実。</p></details>
+          <details class="check"><summary>Q2. <code>FOO=bar</code>と<code>export FOO=bar</code>の違いは何か。実行中のRailsサーバに<code>.env</code>の変更が効かないのはなぜか？</summary><p><code>export</code>は変数を環境変数に昇格させ、子プロセスへ継承させる。<code>export</code>なしの変数はそのシェル内にとどまり子には渡らない。環境変数は起動時に親から子へ<strong>コピー</strong>されるため、すでに起動済みのプロセスには後からの変更が届かない。だからサーバの再起動が必要になる。</p></details>
+          <details class="check"><summary>Q3. <code>cmd &gt; out.log 2&gt;&amp;1</code>で標準出力と標準エラーの両方がファイルに入るのはなぜか。順序を入れ替えるとどうなるか？</summary><p><code>&gt; out.log</code>でfd 1（標準出力）の接続先をファイルにし、続く<code>2&gt;&amp;1</code>でfd 2を「その時点のfd 1と同じ先」へ複製するため、両方がファイルへ向かう。順序を逆（<code>2&gt;&amp;1 &gt; out.log</code>）にすると、fd 2はまだ端末を指していたfd 1に複製されてから、fd 1だけがファイルへ付け替わるので、標準エラーは端末に残る。</p></details>
+        </div>
       </section>
 
       <section class="chapter" id="ch2">
