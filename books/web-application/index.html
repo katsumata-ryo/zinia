@@ -1354,7 +1354,86 @@ FROM reviews;</code></pre>
       <section class="chapter" id="ch17">
         <h2>第17章　正規化の理論</h2>
         <div class="chap-hole"><span class="label">この章で埋まる穴</span>第3正規形まで。「なぜ分けるのか」「いつ崩す（非正規化する）のか」。MongoDBで「埋め込むか参照するか」で悩んでいた判断を、正規化理論の言葉に<strong>翻訳する対比表</strong>を用意します。第3部の核心章。</div>
-        <p class="placeholder">（執筆予定）</p>
+
+        <p><a href="#ch15">第15章</a>で「一つの事実を一箇所にだけ置く」と言った。その「分け方」に、実は<strong>理論的な段階（正規形）</strong>がある。それが正規化だ。正規化と聞くと「テーブルを細かく割ること」という手続きの記憶が先に立つかもしれないが、本書はHOWでなくWHYで行く。<strong>正規化とは、更新異常を起こさないために「関数従属」という関係を手がかりにテーブルを設計する理論</strong>だ。そして本章の核心はもう一つ——MongoDBで「埋め込むか、参照するか」と悩んでいた、あの判断。それが正規化理論の言葉で<strong>何と対応するのか</strong>を翻訳表にする。ここを越えれば、あなたのスキーマ設計は勘から理屈に変わる。</p>
+
+        <h3>関数従属 — 正規化の唯一の道具</h3>
+        <p>正規化の議論はすべて<strong>関数従属（functional dependency）</strong>という一つの概念に乗っている。「Aが決まればBが一意に決まる」という関係を<strong>A → B</strong>と書く。例えば<code>user_id → name</code>：ユーザーIDが決まれば名前は一つに決まる。<code>event_id → title, starts_at</code>も同じ。<strong>主キーは、その行の全属性を関数従属で決める列</strong>——これが主キーの正体だ。正規化とは、突き詰めれば<strong>「すべての非キー属性が、主キー全体にだけ従属している」状態に整える</strong>作業にすぎない。以下の第1〜第3正規形は、この理想からのズレを段階的に取り除いていくものだと捉えてほしい。</p>
+
+        <h3>悪い例から始める — 非正規化されたイベント表</h3>
+        <p>Zephyrを、MongoからそのままRDBに移してきたような「一枚に詰め込んだ」表で考える。イベントと参加者とタグを一つの表に押し込んだ、いわば埋め込みドキュメントをテーブル化したものだ。</p>
+        <div class="scroll-x"><table>
+          <thead><tr><th>event_id</th><th>title</th><th>organizer_name</th><th>attendee_ids</th><th>tags</th></tr></thead>
+          <tbody>
+            <tr><td>42</td><td>Rails輪読会</td><td>田中</td><td>9, 3, 15</td><td>Ruby, 初心者歓迎</td></tr>
+            <tr><td>43</td><td>SQL入門</td><td>田中</td><td>3, 15</td><td>SQL, 初心者歓迎</td></tr>
+          </tbody>
+        </table></div>
+        <p>この表は複数の病を抱えている。それを一つずつ治すのが正規化だ。</p>
+
+        <h3>第1正規形（1NF）— 繰り返しと複合値を排除する</h3>
+        <p><code>attendee_ids</code>に「9, 3, 15」とカンマ区切りで値を詰め込んでいる。<code>tags</code>も同じだ。これは<strong>一つのセルが複数の値を持っている</strong>状態で、集合論的なテーブル（各セルは単一値＝アトミック）の前提を破っている。<strong>1NFは「各セルは分割できない単一の値だけを持つ」を要求する。</strong> カンマ区切りやJSON配列を1カラムに詰めるのは1NF違反だ。</p>
+        <p>なぜダメか。<strong>SQLが集合演算を効かせられなくなる</strong>からだ。「イベント42に参加者9がいるか」を<code>WHERE attendee_ids = ...</code>で正しく問えず、<code>LIKE '%9%'</code>のような文字列マッチに堕ちる（これは15も95も引っかける）。JOINもインデックスも効かない。だから参加者は行として独立させる——ここで<a href="#ch15">第15章</a>の<code>registrations</code>テーブルが必然として生まれる。「1参加 = 1行」だ。</p>
+        <aside class="mongo-note"><span class="tag">MongoDB脳の翻訳</span>
+        MongoでのA<code>attendee_ids: [9, 3, 15]</code>という配列フィールドは、RDBの目で見ると<strong>1NF違反</strong>だ。だがこれはMongoが間違っているのではなく、<strong>配列を第一級で扱いクエリできる（<code>$in</code>や配列インデックス）ように作られている</strong>から成立している。RDBは配列を第一級に扱わない代わりに、その値を<strong>別テーブルの行の集合</strong>として表現し、JOINと集合演算で扱う。「配列フィールド」→「中間テーブルの行たち」という置き換えが、Mongo脳→RDB脳の最初の翻訳だ。</aside>
+
+        <h3>第2正規形（2NF）— 部分従属を排除する</h3>
+        <p>2NFは<strong>複合主キー</strong>を持つ表でだけ問題になる。<code>registrations</code>を、主キーを<code>(user_id, event_id)</code>とする表で考え、うっかりこう作ったとする。</p>
+        <div class="scroll-x"><table>
+          <thead><tr><th>user_id (PK)</th><th>event_id (PK)</th><th>status</th><th>event_title</th><th>user_name</th></tr></thead>
+          <tbody>
+            <tr><td>9</td><td>42</td><td>confirmed</td><td>Rails輪読会</td><td>鈴木</td></tr>
+            <tr><td>3</td><td>42</td><td>applied</td><td>Rails輪読会</td><td>佐藤</td></tr>
+          </tbody>
+        </table></div>
+        <p>ここで<code>event_title</code>は<code>event_id</code>だけで決まる（<code>event_id → event_title</code>）。主キーは<code>(user_id, event_id)</code>の組なのに、<code>event_title</code>は<strong>主キーの一部（event_idだけ）</strong>に従属している。これが<strong>部分関数従属</strong>で、2NF違反だ。<code>user_name</code>も同様に<code>user_id</code>だけに従属している。</p>
+        <p>何が起きるか。同じイベントに10人が申し込めば、<code>event_title</code>「Rails輪読会」が<strong>10行に重複コピー</strong>される——更新異常の再来だ。治療は「主キーの一部にしか従属しない属性を、その一部を主キーとする別テーブルへ移す」。<code>event_title</code>は<code>events</code>へ、<code>user_name</code>は<code>users</code>へ。<code>registrations</code>には主キー全体（誰が・どのイベントに）に従属する<code>status</code>だけが残る。これで<a href="#ch15">第15章</a>で確定したスキーマの形になる。</p>
+
+        <h3>第3正規形（3NF）— 推移的従属を排除する</h3>
+        <p>最後の一段。<code>users</code>にうっかり部署の情報をこう持たせたとする。</p>
+        <div class="scroll-x"><table>
+          <thead><tr><th>id (PK)</th><th>name</th><th>department_id</th><th>department_name</th></tr></thead>
+          <tbody>
+            <tr><td>9</td><td>鈴木</td><td>2</td><td>開発部</td></tr>
+            <tr><td>3</td><td>佐藤</td><td>2</td><td>開発部</td></tr>
+          </tbody>
+        </table></div>
+        <p><code>id → department_id → department_name</code>という連鎖がある。<code>department_name</code>は主キー<code>id</code>に従属してはいるが、<strong>直接ではなく<code>department_id</code>を経由して</strong>従属している。これが<strong>推移的関数従属</strong>で、3NF違反だ。「非キー属性が、別の非キー属性に従属している」状態と言ってもいい。</p>
+        <p>病状はいつも同じ——「開発部」が全社員の行に重複し、部署改名で更新異常が起きる。治療も同じで、<code>departments(id, name)</code>を切り出し、<code>users</code>は<code>department_id</code>で参照するだけにする。<strong>第3正規形をひとことで言えば「非キー属性は、主キーにだけ、直接、従属する」</strong>。よく引かれる標語が<em>「the key, the whole key, and nothing but the key」</em>——キーに（1NF/2NFの含意）、キー全体に（2NF）、キー以外の何物にも従属せず（3NF）だ。実務でスキーマを見るときは、この3NFまで意識すればほぼ十分だ。</p>
+        <aside class="eng-note"><span class="tag">補足</span>
+        1NF→2NF→3NFは「同じ病（更新異常）を、従属のズレの種類ごとに順に潰す」プロセスだと捉えると丸暗記が要らない。2NFは<strong>複合主キーの一部</strong>への従属、3NFは<strong>非キー属性経由</strong>の従属を消す。単一列主キーの表なら部分従属は起こり得ないので、2NFは自動的に満たされ、実質3NFだけを気にすればよい。ActiveRecordの<code>id</code>単一主キーが標準なのは、この意味で正規化と相性がよい。</aside>
+
+        <h3>いつ崩すか — 非正規化は「読み最適化のための意図的な逸脱」</h3>
+        <p>ここまで「分けろ」と言い続けたが、実務では<strong>あえて正規形を崩す</strong>ことがある。これを非正規化と呼ぶ。ただし大原則がある——<strong>非正規化は「正規化を知らないから崩れている」のではなく、「正規化した上で、読みの性能のために意図的に逸脱する」</strong>ものだ。順序が逆になってはいけない。典型は二つ。</p>
+        <ul>
+          <li><strong>集計値のキャッシュ</strong>：イベント一覧で毎回<code>COUNT</code>するのが重いなら、<code>events.confirmed_count</code>という冗長カラムを持ち、申込のたびに更新する。ActiveRecordの<code>counter_cache</code>がまさにこれで、<a href="#ch21">第21章</a>で扱う。事実（registrationsの行数）と導出値（count）が二重化するリスクを、更新の仕組みで引き受ける取引だ。</li>
+          <li><strong>スナップショット（凍結された記録）</strong>：注文明細に「注文時点の商品名・価格」をコピーして持つ。商品マスタが後で変わっても、過去の注文は当時の値であるべきだから、これは<strong>冗長ではなく別の事実</strong>だ。<a href="#ch15">第15章</a>で触れた「変化する事実か、凍結された記録か」の判断がここで効く。</li>
+        </ul>
+
+        <h3>翻訳表 — 「埋め込むか参照するか」を正規化の言葉へ</h3>
+        <p>いよいよ本章の目的地。あなたがMongoで<strong>「このデータは埋め込むべきか、別コレクションにして参照すべきか」</strong>と悩んでいた、あの判断。それはRDBの世界では<strong>「非正規化して1テーブルに持つか、正規化して別テーブルにJOINするか」</strong>とまったく同じ判断だ。悩む軸まで一致している。</p>
+        <div class="scroll-x"><table>
+          <thead><tr><th>判断の軸</th><th>MongoDB（ドキュメント指向）</th><th>RDB（リレーショナル）</th></tr></thead>
+          <tbody>
+            <tr><td>基本方針</td><td><strong>埋め込み</strong>（embed）</td><td><strong>参照</strong>（正規化・別テーブル）</td></tr>
+            <tr><td>例外方針</td><td>変化・共有するものは<strong>参照</strong>（refで別コレクション）</td><td>読みが重い所は<strong>非正規化</strong>（冗長カラム）</td></tr>
+            <tr><td>更新頻度が高い / 共有される事実</td><td>参照にする（埋め込むと更新異常）</td><td>正規化する（別テーブル・single source of truth）</td></tr>
+            <tr><td>ほぼ不変・その親からしか見ない</td><td>埋め込む（1回で読めて速い）</td><td>持たせてよい（or JOINでも軽い）</td></tr>
+            <tr><td>凍結したい記録（当時の値）</td><td>埋め込む（スナップショット）</td><td>非正規化してコピーを持つ（別の事実）</td></tr>
+            <tr><td>1対多の「多」が巨大（際限なく増える）</td><td>参照（ドキュメント肥大・16MB上限を避ける）</td><td>正規化（子テーブルへ・当然の姿）</td></tr>
+            <tr><td>読みの性能が最優先</td><td>埋め込みで結合を消す</td><td>非正規化 or キャッシュカラム</td></tr>
+            <tr><td>整合性を厳格に守りたい</td><td>参照＋アプリで整合性担保</td><td>正規化＋外部キー制約（<a href="#ch22">第22章</a>）</td></tr>
+          </tbody>
+        </table></div>
+        <p>この表の一番の含意はこうだ——<strong>あなたはMongo時代、すでに正規化の判断をしていた</strong>。「更新頻度」「カーディナリティ（多の規模）」「整合性要件」を天秤にかけて埋め込み/参照を選んでいた、その天秤がそっくりそのまま正規化/非正規化の天秤なのだ。違うのは<strong>デフォルトの向きと、整合性を守る主体</strong>だけ。Mongoは「埋め込みから始めてアプリで整合性を守る」、RDBは「参照（正規化）から始めてDBの制約で整合性を守る」。デフォルトが逆だから最初は窮屈に感じるが、判断のロジックはあなたの中に既にある。<strong>正規化理論は、その勘に「関数従属」と「更新異常」という言葉を与えて、再現可能にするものだ。</strong></p>
+        <aside class="mongo-note"><span class="tag">MongoDB脳の翻訳</span>
+        Mongoでよく言われる指針「What is queried together should be stored together（一緒に読むものは一緒に置く）」は、RDBの非正規化の動機とぴったり重なる。逆にRDBの標語「一つの事実は一箇所に」は、Mongoで「参照にすべき」と判断する場面の言い換えだ。両者は敵対する哲学ではなく、<strong>同じトレードオフ（読みの速さ vs 書きの一貫性）に、逆側のデフォルトから近づいている</strong>。この視点を持てば、次に設計で迷ったとき「これはMongoなら埋め込むか？」と自問することが、そのままRDBの正規化判断のショートカットになる。</aside>
+
+        <div class="check-wrap"><h3>理解度チェック</h3>
+          <details class="check"><summary>Q1. 関数従属 A → B とは何か。主キーとどう関係するか？</summary><p>Aが決まればBの値が一意に決まる関係を A → B と書く（例 <code>event_id → title</code>）。主キーとは、その行の全属性を関数従属で一意に決める列（の組）のこと。正規化とは「すべての非キー属性が主キー全体にだけ、直接従属している」状態に整える作業であり、関数従属という一つの概念の上に第1〜第3正規形が乗っている。</p></details>
+          <details class="check"><summary>Q2. 第2正規形と第3正規形が排除する従属はそれぞれ何か。単一列主キーの表ではどうなるか？</summary><p>2NFは複合主キーの<strong>一部</strong>にしか従属しない「部分関数従属」を排除する（例 <code>(user_id,event_id)</code>が主キーなのに<code>event_title</code>が<code>event_id</code>だけに従属）。3NFは非キー属性を経由する「推移的関数従属」を排除する（<code>id→department_id→department_name</code>）。単一列主キーの表では部分従属が起こり得ないため2NFは自動的に満たされ、実質3NFだけを気にすればよい。</p></details>
+          <details class="check"><summary>Q3. 非正規化はどういう場合に正当化されるか。原則の順序に注意して述べよ。</summary><p>非正規化は「正規化を知らずに崩れている」のではなく、正規化した設計を前提に<strong>読みの性能のために意図的に逸脱する</strong>もの（順序が重要）。典型は(1)集計値のキャッシュ（counter_cacheのような冗長カラム、更新の仕組みで二重化リスクを引き受ける）、(2)凍結したい記録のスナップショット（当時の商品名・価格。これは冗長ではなく別の事実）。読みの速さと引き換えに書きの一貫性維持コストを払う取引だと理解する。</p></details>
+        </div>
       </section>
 
       <section class="chapter" id="ch18">
