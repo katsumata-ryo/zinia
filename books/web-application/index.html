@@ -880,7 +880,81 @@ Content-Type: text/html; charset=utf-8
       <section class="chapter" id="ch12">
         <h2>第12章　JavaScriptの非同期モデル</h2>
         <div class="chap-hole"><span class="label">この章で埋まる穴</span>イベントループ、コールスタック、タスク/マイクロタスクキュー。Promiseとasync/awaitが「何の問題（コールバック地獄と例外の伝播）」を解決したのか。シングルスレッドなのに待たされないのはなぜか、を仕組みから理解します。</div>
-        <p class="placeholder">（執筆予定）</p>
+
+        <p>JavaScriptには不思議な二面性がある。<strong>シングルスレッド（一度に1つのことしかできない）</strong>なのに、複数のネットワークリクエストを同時に待てるし、待っている間もUIは固まらない。Rails中心で書いていると「並行処理はスレッドやプロセス（<a href="#ch14">第14章</a>）でやるもの」という感覚があるだけに、この「1本のスレッドで待たされない」仕組みは直感に反する。この章は、その正体である<strong>イベントループ</strong>を分解し、その上で<strong>Promiseとasync/awaitが具体的に何の苦しみを取り除いたのか</strong>を辿る。ここが分かると、非同期コードの実行順序をコードから予測できるようになる。</p>
+
+        <h3>大前提 — JSは「自分では待たない」</h3>
+        <p>混乱の元は「JavaScriptがネットワークやタイマーを待っている」という誤解だ。実際には逆で、<strong>JS自身は待たない</strong>。時間のかかる仕事（HTTPリクエスト、タイマー、ファイル読み込み）は、<strong>JSエンジンの外側の環境（ブラウザやNode.js）に丸投げ</strong>する。「これが終わったら、この関数を呼んでくれ」とコールバックを預けて、JSは<strong>即座に次の行へ進む</strong>。仕事が完了したら、環境が「終わりましたよ」とコールバックを<strong>順番待ちの列</strong>に入れ、JSのスレッドが手空きになったときにそれを実行する。この<strong>「重い仕事は外に出し、完了通知をキュー経由で受け取る」</strong>構造が非同期の全体像だ。<a href="#ch8">第8章</a>で見たネットワーク往復のような「待ち」の間、JSは別の仕事を進められる。</p>
+
+        <h3>イベントループ — コールスタックとキューの往復</h3>
+        <p>もう少し機械的に見る。登場人物は3つだ。</p>
+        <ul>
+          <li><strong>コールスタック</strong>：いま実行中の関数が積まれる場所。JSはここが空になるまで、一つの処理を<strong>最後までノンストップで</strong>走らせる（これがシングルスレッドの意味）。</li>
+          <li><strong>タスクキュー（マクロタスク）</strong>：完了したコールバック（<code>setTimeout</code>、クリックイベント、受信したHTTPレスポンスなど）が並ぶ列。</li>
+          <li><strong>マイクロタスクキュー</strong>：<code>Promise.then</code>の中身などが並ぶ、<strong>優先度の高い</strong>別の列。</li>
+        </ul>
+        <p><strong>イベントループ</strong>は、この間をひたすら回る単純なループだ：<strong>「コールスタックが空になったら、まずマイクロタスクを<em>全部</em>消化する。それが尽きたら、タスクキューから<em>1つ</em>取り出して実行する。また空になったら、再びマイクロタスクを全部…」</strong>。この「マイクロタスクを全消化してから、マクロタスクを1つ」という優先順位が、非同期の実行順序を決める核心だ。</p>
+        <pre><code class="lang-js">console.log("1: 同期");
+
+setTimeout(() =&gt; console.log("4: タイマー(マクロタスク)"), 0);
+
+Promise.resolve().then(() =&gt; console.log("3: Promise(マイクロタスク)"));
+
+console.log("2: 同期");
+
+// 出力順： 1 → 2 → 3 → 4</code></pre>
+        <p>この順序は暗記でなく導ける。まず同期処理（1と2）がコールスタックで走り切る。スタックが空になると、イベントループは<strong>先にマイクロタスク</strong>を見るので、<code>setTimeout</code>を<code>0</code>msで登録していても、Promiseの<code>then</code>（3）が<strong>先に</strong>実行される。マイクロタスクが尽きて初めて、タイマーのマクロタスク（4）が動く。<strong>「<code>setTimeout(fn, 0)</code>は即座ではなく、いまのマイクロタスクを全部片付けた後」</strong>という有名な挙動は、この規則の帰結だ。</p>
+        <aside class="eng-note"><span class="tag">補足</span>
+        イベントループは「並行処理」に見えるが、<strong>並列処理ではない</strong>。どの瞬間もJSコードを実行しているスレッドは1本だけで、複数の仕事を<strong>細切れにして高速に切り替えている</strong>にすぎない。だから重いCPU計算（巨大な配列のソートなど）を同期で回すと、その間コールスタックが占有され、<strong>クリックもレンダリングも全部止まる</strong>（画面が固まる）。この「1本のスレッドを長時間占有してはいけない」という制約と、プロセス／スレッドによる本物の並列との違いは<a href="#ch14">第14章</a>で対比する。RubyのGVLの話ともつながる。</aside>
+
+        <h3>Promise以前 — コールバック地獄と、握りつぶされる例外</h3>
+        <p>非同期の仕組みだけなら、コールバックを預けるだけで成立する。ではなぜPromiseやasync/awaitが必要になったのか。<strong>コールバックだけで書くと、2つの深刻な問題</strong>が生じたからだ。</p>
+        <p>1つ目は<strong>ネスト（コールバック地獄）</strong>。「AしてからB、BしてからC」と<strong>順序のある非同期</strong>を書くと、コールバックの中にコールバックが入り、右へ右へと深くなっていく。</p>
+        <pre><code class="lang-js">// コールバック地獄：順次処理がネストで表現される
+getUser(id, (user) =&gt; {
+  getEvents(user, (events) =&gt; {
+    getReviews(events[0], (reviews) =&gt; {
+      // ここでやっと本題。しかも右へ深くなり続ける
+    });
+  });
+});</code></pre>
+        <p>2つ目は、より厄介な<strong>例外の伝播</strong>だ。同期コードなら<code>try/catch</code>で囲めばエラーを一箇所で受けられる。だが<strong>コールバックは「別の順番待ち」から実行される</strong>ため、それを登録した側の<code>try/catch</code>は<strong>すでにコールスタックから消えている</strong>。つまり非同期コールバックの中で投げた例外は、外側の<code>try/catch</code>では<strong>捕まえられず、握りつぶされる</strong>。各コールバックが<strong>個別にエラー引数（Node.jsの<code>(err, result)</code>慣習）を手作業でチェック</strong>する羽目になり、1箇所忘れるとエラーが闇に消えた。</p>
+
+        <h3>Promise — 「未来の値」を第一級の値として扱う</h3>
+        <p>Promiseの発想は、<strong>「まだ無いが、いずれ手に入る（か、失敗する）値」を1つのオブジェクトとして表現する</strong>ことだ。関数はコールバックを受け取る代わりに、<strong>Promiseを返す</strong>。呼び出し側はその上に<code>.then()</code>で「成功したらこれ」、<code>.catch()</code>で「失敗したらこれ」を<strong>後付けで宣言</strong>できる。これで2つの問題が同時に解ける:</p>
+        <ul>
+          <li><strong>ネストが平らになる</strong>：<code>.then()</code>は新しいPromiseを返すので、<strong>横に鎖状に繋げられる</strong>（チェーン）。「AしてからB」がネストでなく<strong>縦の連なり</strong>になる。</li>
+          <li><strong>エラーが1本に集約される</strong>：チェーンのどこで失敗しても、<strong>末尾の1つの<code>.catch()</code></strong>まで自動で流れてくる。各段で手動チェックする必要が消えた。</li>
+        </ul>
+        <pre><code class="lang-js">getUser(id)
+  .then(user =&gt; getEvents(user))
+  .then(events =&gt; getReviews(events[0]))
+  .then(reviews =&gt; { /* 本題 */ })
+  .catch(err =&gt; { /* どの段の失敗もここに来る */ });</code></pre>
+
+        <h3>async/await — Promiseに「同期のような見た目」を与える</h3>
+        <p>Promiseでネストは消えたが、まだ<code>.then()</code>のコールバックが並ぶ。<strong>async/await</strong>は、そのPromiseに<strong>同期コードそっくりの書き味</strong>を被せる糖衣構文だ。<code>await</code>は「このPromiseが解決するまで、この関数の続きを<strong>いったん中断して待つ</strong>」を意味する——ただし<strong>スレッド全体は止めない</strong>。<code>await</code>に差しかかると関数は中断してコールスタックを明け渡し、他の仕事が進む。Promiseが解決したら、続きが<strong>マイクロタスクとして</strong>再開される。だから「待つ」のに「固まらない」。</p>
+        <pre><code class="lang-js">async function loadReviews(id) {
+  try {
+    const user    = await getUser(id);
+    const events  = await getEvents(user);
+    const reviews = await getReviews(events[0]);
+    return reviews;            // 見た目は完全に同期の順次処理
+  } catch (err) {
+    // 同期の try/catch で、非同期の失敗が普通に捕まえられる
+  }
+}</code></pre>
+        <p>ここが集大成だ。async/awaitの真価は、<strong>あの「握りつぶされる例外」問題を、見慣れた<code>try/catch</code>で解決できる</strong>ことにある。<code>await</code>したPromiseが失敗すると、それは<strong>その場で<code>throw</code>されたかのように振る舞い</strong>、通常の<code>try/catch</code>で捕まる。非同期処理が、同期処理と<strong>同じ道具（順次実行・try/catch・for文）</strong>で書けるようになった——これがコールバック時代から積み上げてきた進化の到達点だ。</p>
+        <aside class="mongo-note"><span class="tag">MongoDB脳の翻訳</span>
+        MongoやHTTP APIをJSから叩くとき、ドライバのメソッドはほぼ<strong>Promiseを返す</strong>。<code>await collection.find(...)</code>が「同期のように」書けるのは、この章の仕組みがすべて下で動いているからだ。逆に、<code>await</code>を付け忘れると、返ってくるのは<strong>結果ではなくPromiseオブジェクト</strong>——「なぜか値が<code>Promise {&lt;pending&gt;}</code>になる」定番のバグは、非同期の値を同期の値と取り違えたことが原因。「未来の値」と「いまの値」は別物、という本章の視点がそのまま効く。</aside>
+
+        <p>そして、この「シングルスレッド＋イベントループ」というモデルは、JavaScriptだけの話ではない。<strong>1本のスレッドで大量の待ち（IO）を捌く</strong>この方式は、サーバサイドの並行性モデルの一つの流儀であり、<a href="#ch14">第14章</a>でプロセス・スレッドと並べて「どのモデルがどんな仕事に向くか」を論じる。第1部で辿ってきたネットワークの旅は、ここでサーバの内部（第2部）へと引き継がれる。</p>
+
+        <div class="check-wrap"><h3>理解度チェック</h3>
+          <details class="check"><summary>Q1. シングルスレッドのJavaScriptが、複数の通信を「待てる」のはなぜか？</summary><p>JS自身は待たず、時間のかかる仕事（通信・タイマー）を外側の環境（ブラウザ／Node）に丸投げし、完了通知をコールバックとしてキューで受け取るから。JSは仕事を預けたら即座に次へ進み、手が空いたときにイベントループがキューから完了分を取り出して実行する。待ちは外部で並行しており、JSスレッドは占有されない。</p></details>
+          <details class="check"><summary>Q2. <code>setTimeout(fn, 0)</code>と<code>Promise.resolve().then(fn)</code>では、どちらが先に実行されるか。なぜか？</summary><p>Promiseの<code>then</code>が先。イベントループはコールスタックが空になると、まずマイクロタスク（Promiseのthen）を<strong>全部</strong>消化し、それが尽きてからタスクキュー（setTimeout等のマクロタスク）を1つ取り出す。<code>0</code>ms指定でもsetTimeoutはマクロタスクなので、マイクロタスクの後になる。</p></details>
+          <details class="check"><summary>Q3. コールバック方式にあった2つの問題を、Promise／async/awaitはどう解決したか？</summary><p>(1)ネスト（コールバック地獄）：Promiseの<code>.then()</code>チェーンで順次処理を縦に平らにし、async/awaitでは同期的な順次記述にできる。(2)例外の握りつぶし：非同期コールバックの例外は登録側のtry/catchで捕まえられなかったが、Promiseは末尾の<code>.catch()</code>に集約し、async/awaitは通常の<code>try/catch</code>で非同期の失敗を捕捉できるようにした。</p></details>
+        </div>
       </section>
 
 <!-- ================= 第2部 ================= -->
